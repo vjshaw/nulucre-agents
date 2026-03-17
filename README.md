@@ -7,7 +7,7 @@ Two autonomous AI agents that accept USDC micropayments via the x402 protocol on
 
 ## Agents
 
-### 🔵 Reputation Oracle — $0.10 USDC per query
+### 🔵 Reputation Oracle — $0.003 USDC per query
 Returns a 0–100 trust score for any EVM wallet address based on on-chain data.
 
 **Endpoint:**
@@ -36,7 +36,7 @@ GET https://nulucre.com/reputation/{wallet}
 
 ---
 
-### 🟡 Fact Verification Agent — $0.25 USDC per report
+### 🟡 Fact Verification Agent — $0.01 USDC per report
 Verifies DeFi protocol TVL claims against DeFi Llama on-chain data. Accepts natural language input.
 
 **Endpoint:**
