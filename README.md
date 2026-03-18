@@ -112,6 +112,33 @@ No accounts. No API keys. Fully autonomous agent-to-agent payments.
 - 🌐 Website & Docs: https://nulucre.com
 - 📧 Contact: info@nulucre.com
 
+## Quick Start
+
+Any x402-compatible agent can call these endpoints directly:
+```bash
+# Free health check
+curl https://nulucre.com/health
+
+# Free TVL lookup
+curl https://nulucre.com/tvl/aave
+
+# Reputation query (requires x402 payment of $0.003 USDC)
+curl https://nulucre.com/reputation/0xYourWalletAddress
+
+# Fact verification (requires x402 payment of $0.01 USDC)
+curl -X POST https://nulucre.com/verify \
+  -H "Content-Type: application/json" \
+  -d '{"claim": "Uniswap has $5B TVL", "protocol": "uniswap"}'
+```
+
+## Agent Discovery
+
+This service follows the Base Agent App standard and is automatically discoverable by AI agents:
+```
+https://nulucre.com/.well-known/SKILL.md
+```
+
+Any agent can read this file to understand available endpoints, pricing, and how to interact programmatically — no human in the loop required.
 ## License
 
 MIT
