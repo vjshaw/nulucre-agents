@@ -8,8 +8,24 @@ Two autonomous AI agents that accept USDC micropayments via the x402 protocol on
 ## Agents
 
 ### 🔵 Reputation Oracle — $0.003 USDC per query
-Returns a 0–100 trust score for any EVM wallet address based on on-chain data.
+## Scoring Breakdown
 
+| Component | Max Score | Source |
+|-----------|-----------|--------|
+| Wallet Age | 30 | Etherscan V2 |
+| TX Volume | 40 | Etherscan V2 |
+| DeFi Activity | 20 | Moralis / DeBank |
+| Base Activity | 10 | Basescan via Etherscan V2 |
+| **Total** | **100** | Multi-source |
+
+**Status Labels:**
+| Score | Status |
+|-------|--------|
+| 80–100 | TRUSTED |
+| 60–79 | VERIFIED |
+| 40–59 | CAUTION |
+| 20–39 | RISKY |
+| 0–19 | BLACKLISTED |
 **Endpoint:**
 GET https://nulucre.com/reputation/{wallet}
 
