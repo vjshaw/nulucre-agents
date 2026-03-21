@@ -16,7 +16,23 @@ Two autonomous AI agents that accept USDC micropayments via the x402 protocol on
 | TX Volume | 40 | Etherscan V2 |
 | DeFi Activity | 20 | Moralis / DeBank |
 | Base Activity | 10 | Basescan via Etherscan V2 |
-| **Total** | **100** | Multi-source |
+| Multi-Chain EVM | 10 | Alchemy (Polygon, Arbitrum, Optimism) |
+| Ankr Coverage | 10 | Ankr (81+ chains) |
+| **Total** | **100+** | Multi-source |
+
+## Pricing Tiers
+
+| Tier | Endpoint | Price | Description |
+|------|----------|-------|-------------|
+| Standard | GET /reputation/{wallet} | $0.003 USDC | 0-100 score across 81+ chains |
+| Signed | GET /reputation/signed/{wallet} | $0.01 USDC | Score + ECDSA cryptographic proof |
+| Verification | POST /verify | $0.01 USDC | DeFi TVL fact verification |
+
+## Cryptographic Verification
+Signed scores can be independently verified by any agent:
+- **JWKS endpoint:** https://nulucre.com/.well-known/jwks.json
+- **Algorithm:** ECDSA-P256
+- **Signed by:** nulucre.com
 
 **Status Labels:**
 | Score | Status |
@@ -29,19 +45,32 @@ Two autonomous AI agents that accept USDC micropayments via the x402 protocol on
 **Endpoint:**
 GET https://nulucre.com/reputation/{wallet}
 
-**Example Response:**
-```json
 {
   "wallet": "0x123...abc",
-  "score": 82,
+  "score": 97,
   "status": "TRUSTED",
   "breakdown": {
-    "walletAge": { "score": 24, "raw": "847 days" },
-    "txVolume":  { "score": 38, "raw": "3240 txs" }
+    "walletAge": { "score": 30, "raw": "3827 days" },
+    "txVolume": { "score": 40, "raw": "10000 txs" },
+    "defiActivity": { "score": 8, "raw": "4 protocols" },
+    "baseActivity": { "score": 0, "raw": "0 base txs" },
+    "multiChain": { "score": 9, "raw": "3 EVM chains" },
+    "ankrCoverage": { "score": 10, "raw": "16 chains with assets" }
   },
-  "timestamp": "2026-03-17T11:07:00Z"
+  "chains": ["ethereum", "base", "polygon", "arbitrum", "optimism", "ankr-81-chains"],
+  "timestamp": "2026-03-21T19:10:38.797Z"
 }
-```
+{
+  "wallet": "0x123...abc",
+  "score": 97,
+  "status": "TRUSTED",
+  "proof": {
+    "signature": "MEQCIFruX2vD...",
+    "algorithm": "ECDSA-P256",
+    "signedBy": "nulucre.com",
+    "verifyAt": "https://nulucre.com/.well-known/jwks.json"
+  }
+}
 
 **Status Labels:**
 - TRUSTED (80–100)
