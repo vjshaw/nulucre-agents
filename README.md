@@ -1,13 +1,12 @@
-# nulucre-agents
-AI infrastructure agents with x402 micropayments on Base — Reputation Oracle &amp; DeFi Fact Verification
+# Nulucre Agents — The On-Chain Credit Score for AI Agents
 
-# Nulucre Agents — AI Infrastructure on Base
-
-Two autonomous AI agents that accept USDC micropayments via the x402 protocol on Base mainnet. No API keys, no accounts, no subscriptions — just pay-per-query.
+Two autonomous AI agents accepting USDC micropayments via x402 on Base mainnet and Stellar pubnet. No API keys, no accounts, no subscriptions — pure agent-to-agent commerce.
 
 ## Agents
 
-### 🔵 Reputation Oracle — $0.003 USDC per query
+### 🔵 Reputation Oracle
+The credit score for crypto wallets. Returns a 0-100 trust score across 81+ chains with ECDSA cryptographic proof.
+
 ## Scoring Breakdown
 
 | Component | Max Score | Source |
@@ -20,16 +19,18 @@ Two autonomous AI agents that accept USDC micropayments via the x402 protocol on
 | Ankr Coverage | 10 | Ankr (81+ chains) |
 | **Total** | **100+** | Multi-source |
 
-## Pricing Tiers
+## Pricing & Networks
 
-| Tier | Endpoint | Price | Description |
-|------|----------|-------|-------------|
-| Standard | GET /reputation/{wallet} | $0.003 USDC | 0-100 score across 81+ chains |
-| Signed | GET /reputation/signed/{wallet} | $0.01 USDC | Score + ECDSA cryptographic proof |
-| Verification | POST /verify | $0.01 USDC | DeFi TVL fact verification |
+| Tier | Endpoint | Price | Networks |
+|------|----------|-------|---------|
+| Standard | GET /reputation/{wallet} | $0.003 USDC | Base Mainnet + Stellar Pubnet |
+| Signed | GET /reputation/signed/{wallet} | $0.01 USDC | Base Mainnet + Stellar Pubnet |
+| Verification | POST /verify | $0.01 USDC | Base Mainnet + Stellar Pubnet |
+| TVL Lookup | GET /tvl/{protocol} | FREE | - |
+| Health | GET /health | FREE | - |
 
 ## Cryptographic Verification
-Signed scores can be independently verified by any agent:
+Signed scores are independently verifiable by any agent:
 - **JWKS endpoint:** https://nulucre.com/.well-known/jwks.json
 - **Algorithm:** ECDSA-P256
 - **Signed by:** nulucre.com
@@ -42,9 +43,9 @@ Signed scores can be independently verified by any agent:
 | 40–59 | CAUTION |
 | 20–39 | RISKY |
 | 0–19 | BLACKLISTED |
-**Endpoint:**
-GET https://nulucre.com/reputation/{wallet}
 
+**Standard Response:**
+```json
 {
   "wallet": "0x123...abc",
   "score": 97,
@@ -53,13 +54,16 @@ GET https://nulucre.com/reputation/{wallet}
     "walletAge": { "score": 30, "raw": "3827 days" },
     "txVolume": { "score": 40, "raw": "10000 txs" },
     "defiActivity": { "score": 8, "raw": "4 protocols" },
-    "baseActivity": { "score": 0, "raw": "0 base txs" },
     "multiChain": { "score": 9, "raw": "3 EVM chains" },
     "ankrCoverage": { "score": 10, "raw": "16 chains with assets" }
   },
   "chains": ["ethereum", "base", "polygon", "arbitrum", "optimism", "ankr-81-chains"],
-  "timestamp": "2026-03-21T19:10:38.797Z"
+  "timestamp": "2026-03-24T00:00:00.000Z"
 }
+```
+
+**Signed Response:**
+```json
 {
   "wallet": "0x123...abc",
   "score": 97,
@@ -71,18 +75,12 @@ GET https://nulucre.com/reputation/{wallet}
     "verifyAt": "https://nulucre.com/.well-known/jwks.json"
   }
 }
-
-**Status Labels:**
-- TRUSTED (80–100)
-- VERIFIED (60–79)
-- CAUTION (40–59)
-- RISKY (20–39)
-- BLACKLISTED (0–19)
+```
 
 ---
 
 ### 🟡 Fact Verification Agent — $0.01 USDC per report
-Verifies DeFi protocol TVL claims against DeFi Llama on-chain data. Accepts natural language input.
+Verifies DeFi protocol TVL claims against DeFi Llama on-chain data. Returns ACCURATE, MISLEADING, or FALSE.
 
 **Endpoint:**
 POST https://nulucre.com/verify
@@ -103,7 +101,7 @@ POST https://nulucre.com/verify
   "actualTVL": 11840000000,
   "discrepancyPercent": -1.3,
   "dataSource": "DeFi Llama",
-  "timestamp": "2026-03-17T11:07:00Z"
+  "timestamp": "2026-03-24T00:00:00.000Z"
 }
 ```
 
@@ -129,8 +127,8 @@ GET https://nulucre.com/tvl/{protocol}
 ## How x402 Payment Works
 
 1. Agent calls your endpoint
-2. Server returns `402 Payment Required` with payment details
-3. Agent sends USDC on Base to the payment address
+2. Server returns `402 Payment Required` with payment details for Base or Stellar
+3. Agent sends USDC on Base mainnet or Stellar pubnet
 4. Agent includes payment proof in next request header
 5. Server verifies and returns data
 
@@ -138,28 +136,34 @@ No accounts. No API keys. Fully autonomous agent-to-agent payments.
 
 ## Payment Details
 
-- **Network:** Base Mainnet (Chain 8453)
-- **Token:** USDC (ERC-20)
-- **Protocol:** x402
-- **Receiving Wallet:** `0xd97C122cB81894213C67Bcc774448955d09915bC`
+| Network | Token | Address |
+|---------|-------|---------|
+| Base Mainnet | USDC (ERC-20) | `0xd97C122cB81894213C67Bcc774448955d09915bC` |
+| Stellar Pubnet | USDC (SEP-41) | `GCRUBFDANV52JP3URUJ7EZGPZKFEESBTW7T3FV2SJXZZGB6HDNRBWV24` |
 
 ## Stack
 
 - Node.js + Express
 - x402 payment protocol
-- Etherscan API (wallet data)
-- DeFi Llama API (TVL data)
-- Coinbase CDP (payment verification)
+- Etherscan V2 (wallet age + tx volume)
+- Moralis / DeBank (DeFi activity)
+- Alchemy (Polygon, Arbitrum, Optimism)
+- Ankr (81+ chains)
+- DeFi Llama (TVL verification)
+- ECDSA-P256 cryptographic signing
+- OpenZeppelin Stellar facilitator
 - PM2 + Nginx on Ubuntu VPS
 
-## Links
-
-- 🌐 Website & Docs: https://nulucre.com
-- 📧 Contact: info@nulucre.com
+## Agent Discovery
+```
+https://nulucre.com/.well-known/SKILL.md
+https://nulucre.com/.well-known/x402.json
+https://nulucre.com/.well-known/agent.json
+https://nulucre.com/.well-known/jwks.json
+https://nulucre.com/openapi.json
+```
 
 ## Quick Start
-
-Any x402-compatible agent can call these endpoints directly:
 ```bash
 # Free health check
 curl https://nulucre.com/health
@@ -167,23 +171,25 @@ curl https://nulucre.com/health
 # Free TVL lookup
 curl https://nulucre.com/tvl/aave
 
-# Reputation query (requires x402 payment of $0.003 USDC)
+# Reputation query (requires x402 payment)
 curl https://nulucre.com/reputation/0xYourWalletAddress
 
-# Fact verification (requires x402 payment of $0.01 USDC)
+# Signed reputation query
+curl https://nulucre.com/reputation/signed/0xYourWalletAddress
+
+# Fact verification (requires x402 payment)
 curl -X POST https://nulucre.com/verify \
   -H "Content-Type: application/json" \
   -d '{"claim": "Uniswap has $5B TVL", "protocol": "uniswap"}'
 ```
 
-## Agent Discovery
+## Links
 
-This service follows the Base Agent App standard and is automatically discoverable by AI agents:
-```
-https://nulucre.com/.well-known/SKILL.md
-```
+- 🌐 Website: https://nulucre.com
+- 📦 x402.json: https://nulucre.com/.well-known/x402.json
+- 🔑 JWKS: https://nulucre.com/.well-known/jwks.json
+- 📧 Contact: info@nulucre.com
 
-Any agent can read this file to understand available endpoints, pricing, and how to interact programmatically — no human in the loop required.
 ## License
 
 MIT
