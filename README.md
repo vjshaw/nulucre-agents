@@ -162,7 +162,15 @@ https://nulucre.com/.well-known/agent.json
 https://nulucre.com/.well-known/jwks.json
 https://nulucre.com/openapi.json
 ```
+## 🆓 Try It Free — No Payment Needed
 
+Test the API instantly with no x402 setup required:
+
+```bash
+curl https://nulucre.com/reputation/0x000000000000000000000000000000000000TEST
+```
+
+Returns a sample wallet score response immediately. For real wallet scoring, use any EVM address — $0.001 USDC via x402.
 ## Quick Start
 ```bash
 # Free health check
