@@ -20,11 +20,12 @@ The credit score for crypto wallets. Returns a 0-100 trust score across 81+ chai
 | **Total** | **100+** | Multi-source |
 
 ## Pricing & Networks
-
 | Tier | Endpoint | Price | Networks |
 |------|----------|-------|---------|
 | Standard | GET /reputation/{wallet} | $0.003 USDC | Base Mainnet + Stellar Pubnet |
 | Signed | GET /reputation/signed/{wallet} | $0.01 USDC | Base Mainnet + Stellar Pubnet |
+| Stellar Score | GET /reputation/stellar/{gAddress} | $0.003 USDC | Stellar Pubnet |
+| Stellar Signed | GET /reputation/stellar/signed/{gAddress} | $0.01 USDC | Stellar Pubnet |
 | Verification | POST /verify | $0.01 USDC | Base Mainnet + Stellar Pubnet |
 | TVL Lookup | GET /tvl/{protocol} | FREE | - |
 | Health | GET /health | FREE | - |
@@ -179,11 +180,17 @@ curl https://nulucre.com/health
 # Free TVL lookup
 curl https://nulucre.com/tvl/aave
 
-# Reputation query (requires x402 payment)
+# EVM wallet reputation query (requires x402 payment)
 curl https://nulucre.com/reputation/0xYourWalletAddress
 
-# Signed reputation query
+# EVM signed reputation query with ECDSA proof
 curl https://nulucre.com/reputation/signed/0xYourWalletAddress
+
+# Stellar native wallet reputation query (requires x402 payment)
+curl https://nulucre.com/reputation/stellar/GYourStellarAddress
+
+# Stellar signed reputation query with ECDSA proof
+curl https://nulucre.com/reputation/stellar/signed/GYourStellarAddress
 
 # Fact verification (requires x402 payment)
 curl -X POST https://nulucre.com/verify \
@@ -191,6 +198,7 @@ curl -X POST https://nulucre.com/verify \
   -d '{"claim": "Uniswap has $5B TVL", "protocol": "uniswap"}'
 ```
 
+Copy and paste this replacing your existing Quick Start section → commit! 👊
 ## Links
 
 - 🌐 Website: https://nulucre.com
