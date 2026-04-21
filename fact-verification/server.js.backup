@@ -1,0 +1,70 @@
+const express = require('express');
+const axios = require('axios');
+const app = express();
+app.use(express.json());
+const PORT = process.env.PORT_VERIFY || 3002;
+const WALLET = process.env.WALLET_ADDRESS || '0xYourWallet';
+function gate(price) {
+  return async (req, res, next) => {
+    if (!req.headers['x-payment']) {
+      return res.status(402).json({
+        error: 'Payment Required',
+        x402Version: 1,
+        accepts: [{
+          scheme: 'exact',
+          network: 'base-mainnet',
+          maxAmountRequired: (parseFloat(price) * 1e6).toString(),
+          resource: req.path,
+          description: `Fact Verification - $${price} USDC`,
+          payTo: WALLET,
+          maxTimeoutSeconds: 300,
+          asset: '0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913'
+        },
+        {
+          scheme: 'exact',
+          network: 'stellar:pubnet',
+          maxAmountRequired: (parseFloat(price) * 1e7).toString(),
+          resource: req.path,
+          description: `Fact Verification - $${price} USDC on Stellar`,
+          payTo: process.env.STELLAR_ADDRESS,
+          maxTimeoutSeconds: 300,
+          asset: 'CBIELTK6YBZJU5UP2WWQEUCYKLPU6AUNZ2BQ4WWFEIE3USCIHMXQDAMA',
+          outputSchema: {
+            input: { type: 'object', properties: { claim: { type: 'string', description: 'DeFi TVL claim to verify' }, protocol: { type: 'string', description: 'DeFi Llama protocol slug' } }, required: ['claim'] },
+            output: { type: 'object', properties: { verdict: { type: 'string', enum: ['ACCURATE', 'MOSTLY_ACCURATE', 'INACCURATE', 'MISLEADING', 'FALSE'] }, claimedTvl: { type: 'string' }, actualTvl: { type: 'string' }, discrepancy: { type: 'string' } } }
+          }
+        }]
+      });
+    }
+    next();
+  };
+}
+async function verifyTVL(claim, protocol) {
+  const amount = claim.match(/\$?([\d.]+)\s*(billion|million|b|m)/i);
+  if (!amount) return { verdict: 'UNVERIFIABLE', reason: 'No dollar amount found' };
+  const multiplier = amount[2].toLowerCase().startsWith('b') ? 1e9 : 1e6;
+  const claimed = parseFloat(amount[1]) * multiplier;
+  const slug = protocol || claim.split(' ')[0].toLowerCase();
+  const r = await axios.get(`https://api.llama.fi/tvl/${slug}`);
+  const actual = r.data;
+  const diff = Math.abs(claimed - actual) / actual;
+  const pct = ((claimed - actual) / actual * 100).toFixed(1);
+  const verdict = diff < 0.05 ? 'ACCURATE' : diff < 0.10 ? 'MOSTLY_ACCURATE' : diff < 0.25 ? 'INACCURATE' : diff < 0.50 ? 'MISLEADING' : 'FALSE';
+  return { verdict, claim, protocol: slug, claimedTVL: claimed, actualTVL: actual, discrepancyPercent: parseFloat(pct), dataSource: 'DeFi Llama', timestamp: new Date().toISOString() };
+}
+app.get('/health', (req, res) => res.json({ status: 'online', service: 'Fact Verification' }));
+app.post('/verify', gate('0.01'), async (req, res) => {
+  const { claim, protocol } = req.body;
+  if (!claim) return res.status(400).json({ error: 'Provide a claim to verify' });
+  try { res.json(await verifyTVL(claim, protocol)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.get('/tvl/:protocol', async (req, res) => {
+  try {
+    const r = await axios.get(`https://api.llama.fi/tvl/${req.params.protocol}`);
+    const tvl = r.data;
+    const fmt = tvl >= 1e9 ? `$${(tvl/1e9).toFixed(2)}B` : `$${(tvl/1e6).toFixed(2)}M`;
+    res.json({ protocol: req.params.protocol, tvl, formatted: fmt });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.listen(PORT, () => console.log(`Fact Verification running on :${PORT}`));
