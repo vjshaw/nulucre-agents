@@ -465,6 +465,31 @@ async function fetchStellarExpertData(gAddress) {
   } catch { return { trades: 0, payments: 0, trustlines: 0 }; }
 }
 
+async function checkStellarSanctions(gAddress) {
+  try {
+    const apiKey = process.env.OFAC_API_KEY;
+    if (!apiKey) return { sanctioned: false, matches: 0, source: 'OFAC API', status: 'UNCHECKED' };
+    const res = await axios.post('https://api.ofac-api.com/v4/search', {
+      apiKey,
+      sources: ['SDN', 'NONSDN', 'EU', 'UN'],
+      cases: [{ id: gAddress, name: gAddress, cryptoId: gAddress }]
+    }, { timeout: 8000, headers: { 'Content-Type': 'application/json' } });
+    const results = res.data?.results || [];
+    const matches = results.filter(r => r.matchCount > 0);
+    if (matches.length > 0) {
+      return {
+        sanctioned: true,
+        matches: matches[0].matchCount,
+        source: 'OFAC/UN/EU SDN',
+        status: 'SANCTIONED'
+      };
+    }
+    return { sanctioned: false, matches: 0, source: 'OFAC/UN/EU SDN', status: 'CLEAR' };
+  } catch {
+    return { sanctioned: false, matches: 0, source: 'OFAC API unavailable', status: 'UNCHECKED' };
+  }
+}
+
 async function getStellarScore(gAddress) {
   if (!gAddress || !gAddress.startsWith('G') || gAddress.length !== 56) {
     throw new Error('Invalid Stellar address — must start with G and be 56 characters');
@@ -505,11 +530,14 @@ async function getStellarScore(gAddress) {
   const rawScore = ageScore + txScore + assetScore + dexScore + trustScore + claimableScore + sorobanScore + lpScore - spamPenalty;
   const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
   const status = finalScore>=80?'TRUSTED':finalScore>=60?'VERIFIED':finalScore>=40?'CAUTION':finalScore>=20?'RISKY':'BLACKLISTED';
+  const sanctionsResult = await checkStellarSanctions(gAddress);
+  const finalStatus = sanctionsResult.sanctioned ? 'BLACKLISTED' : status;
+  const finalScoreAdj = sanctionsResult.sanctioned ? 0 : finalScore;
   return {
     wallet: gAddress,
     network: 'stellar:pubnet',
-    score: finalScore,
-    status,
+    score: finalScoreAdj,
+    status: finalStatus,
     breakdown: {
       accountAge: { score: Math.round(ageScore), raw: horizon.ageInDays + ' days' },
       txVolume: { score: Math.round(txScore), raw: horizon.txCount + ' transactions' },
@@ -519,10 +547,11 @@ async function getStellarScore(gAddress) {
       claimableActivity: { score: Math.round(claimableScore), raw: (horizon.claimableCount || 0) + ' claimable balances' },
       sorobanUsage: { score: Math.round(sorobanScore), raw: (horizon.sorobanOps || 0) + ' contract interactions' },
       liquidityPools: { score: Math.round(lpScore), raw: (horizon.lpOps || 0) + ' LP interactions' },
-      spamPenalty: { score: -spamPenalty, raw: Math.round((horizon.spamRatio || 0) * 100) + '% spam ratio' }
+      spamPenalty: { score: -spamPenalty, raw: Math.round((horizon.spamRatio || 0) * 100) + '% spam ratio' },
+      sanctionsCheck: { score: sanctionsResult.sanctioned ? -100 : 0, raw: sanctionsResult.status, source: sanctionsResult.source }
     },
     chains: ['stellar:pubnet'],
-    dataSource: 'Horizon API + Stellar Expert',
+    dataSource: 'Horizon API + Stellar Expert + OFAC Sanctions Screening',
     timestamp: new Date().toISOString()
   };
 }
