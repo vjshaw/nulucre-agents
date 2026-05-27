@@ -519,3 +519,40 @@ app.get('/reputation/stellar/signed/:gAddress', gate('0.01'), async (req, res) =
   }
 });
 
+
+// LIVE STATS ENDPOINT
+app.get('/stats', async (req, res) => {
+  try {
+    const { execSync } = require('child_process');
+    
+    const totalRequests = execSync(
+      'zcat /var/log/nginx/access.log.*.gz 2>/dev/null | wc -l && wc -l < /var/log/nginx/access.log'
+    ).toString().trim().split('\n').reduce((a, b) => parseInt(a) + parseInt(b), 0);
+
+    const uniqueIPs = execSync(
+      '(zcat /var/log/nginx/access.log.*.gz 2>/dev/null; cat /var/log/nginx/access.log) | awk \'{print $1}\' | sort | uniq | wc -l'
+    ).toString().trim();
+
+    const paywall402 = execSync(
+      '(zcat /var/log/nginx/access.log.*.gz 2>/dev/null; cat /var/log/nginx/access.log) | grep " 402 " | wc -l'
+    ).toString().trim();
+
+    const reputationHits = execSync(
+      '(zcat /var/log/nginx/access.log.*.gz 2>/dev/null; cat /var/log/nginx/access.log) | grep -E "reputation|verify" | wc -l'
+    ).toString().trim();
+
+    res.json({
+      totalRequests,
+      uniqueVisitors: parseInt(uniqueIPs),
+      paywallDiscoveries: parseInt(paywall402),
+      totalQueries: parseInt(reputationHits),
+      chainsSupported: 81,
+      countriesReached: 5,
+      networks: ['base-mainnet', 'stellar:pubnet'],
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+

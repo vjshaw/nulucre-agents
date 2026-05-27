@@ -51,6 +51,56 @@ function gate(price) {
             input: { type: 'object', properties: { wallet: { type: 'string', description: 'EVM wallet address (0x...)' } }, required: ['wallet'] },
             output: { type: 'object', properties: { score: { type: 'number' }, status: { type: 'string' }, breakdown: { type: 'object' }, chains: { type: 'array' }, proof: { type: 'object' } } }
           }
+        },
+        {
+          scheme: 'exact',
+          network: 'stellar:pubnet',
+          maxAmountRequired: (parseFloat(price) * 1e7).toString(),
+          resource: req.path,
+          description: 'Reputation Query - pay in EURC (Euro) on Stellar',
+          payTo: process.env.STELLAR_ADDRESS,
+          maxTimeoutSeconds: 300,
+          asset: 'EURC-GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2'
+        },
+        {
+          scheme: 'exact',
+          network: 'stellar:pubnet',
+          maxAmountRequired: (parseFloat(price) * 1e7).toString(),
+          resource: req.path,
+          description: 'Reputation Query - pay in MXNT (Mexican Peso) on Stellar',
+          payTo: process.env.STELLAR_ADDRESS,
+          maxTimeoutSeconds: 300,
+          asset: 'MXNT-GBUMQHWIQELILQEQ5YEEHUFR6SRLBNRKWHJ3JX7JBRFONG24FWUDG627'
+        },
+        {
+          scheme: 'exact',
+          network: 'stellar:pubnet',
+          maxAmountRequired: (parseFloat(price) * 1e7).toString(),
+          resource: req.path,
+          description: 'Reputation Query - pay in NGNT (Nigerian Naira) on Stellar',
+          payTo: process.env.STELLAR_ADDRESS,
+          maxTimeoutSeconds: 300,
+          asset: 'NGNT-GAWODAROMJ33V5YDFY3NPYTHVYQG7MJXVJ2ND3AOGIHYRWINES6ACCPD'
+        },
+        {
+          scheme: 'exact',
+          network: 'stellar:pubnet',
+          maxAmountRequired: (parseFloat(price) * 1e7).toString(),
+          resource: req.path,
+          description: 'Reputation Query - pay in ARST (Argentine Peso) on Stellar',
+          payTo: process.env.STELLAR_ADDRESS,
+          maxTimeoutSeconds: 300,
+          asset: 'ARST-GAUC3UVRJXFTJ24C4RKDQ7LLVAT3WTKEBTA3OVX3GCTVPRUICOVKER47'
+        },
+        {
+          scheme: 'exact',
+          network: 'stellar:pubnet',
+          maxAmountRequired: (parseFloat(price) * 1e7).toString(),
+          resource: req.path,
+          description: 'Reputation Query - pay in BRL (Brazilian Real) on Stellar',
+          payTo: process.env.STELLAR_ADDRESS,
+          maxTimeoutSeconds: 300,
+          asset: 'BRL-GA3S5IFYIK4YJMEGJ5MIKRL3GNRBIN5OOAYUZNFQIEPMVBKWZP55E4QS'
         }]
       });
     }
@@ -357,18 +407,19 @@ async function getFullScoreV3(wallet) {
 
 async function fetchStellarHorizonData(gAddress) {
   try {
-    const [accountRes, txRes, opsRes] = await Promise.allSettled([
+    const [accountRes, txRes, opsRes, claimableRes, effectsRes] = await Promise.allSettled([
       axios.get(`https://horizon.stellar.org/accounts/${gAddress}`, { timeout: 10000 }),
       axios.get(`https://horizon.stellar.org/accounts/${gAddress}/transactions?limit=200&order=asc`, { timeout: 10000 }),
-      axios.get(`https://horizon.stellar.org/accounts/${gAddress}/operations?limit=200`, { timeout: 10000 })
+      axios.get(`https://horizon.stellar.org/accounts/${gAddress}/operations?limit=200`, { timeout: 10000 }),
+      axios.get(`https://horizon.stellar.org/claimable_balances?claimant=${gAddress}&limit=20`, { timeout: 10000 }),
+      axios.get(`https://horizon.stellar.org/accounts/${gAddress}/effects?limit=200`, { timeout: 10000 })
     ]);
-
     const account = accountRes.status === 'fulfilled' ? accountRes.value.data : null;
     const txs = txRes.status === 'fulfilled' ? txRes.value.data?._embedded?.records || [] : [];
     const ops = opsRes.status === 'fulfilled' ? opsRes.value.data?._embedded?.records || [] : [];
-
+    const claimable = claimableRes.status === 'fulfilled' ? claimableRes.value.data?._embedded?.records || [] : [];
+    const effects = effectsRes.status === 'fulfilled' ? effectsRes.value.data?._embedded?.records || [] : [];
     if (!account) return null;
-
     const createdAt = txs.length > 0 ? new Date(txs[0].created_at) : new Date();
     const ageInDays = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
     const txCount = txs.length;
@@ -378,8 +429,25 @@ async function fetchStellarHorizonData(gAddress) {
     const xlmBalance = parseFloat(balances.find(b => b.asset_type === 'native')?.balance || '0');
     const subentryCount = account.subentry_count || 0;
     const lastModified = account.last_modified_time || null;
-
-    return { ageInDays, txCount, opCount, assetCount, xlmBalance, subentryCount, lastModified };
+    const claimableCount = claimable.length;
+    const sorobanOps = ops.filter(op => op.type === 'invoke_host_function').length;
+    const lpOps = effects.filter(e =>
+      e.type === 'liquidity_pool_deposited' ||
+      e.type === 'liquidity_pool_withdrew' ||
+      e.type === 'liquidity_pool_trade'
+    ).length;
+    const realPayments = ops.filter(op =>
+      op.type === 'payment' && parseFloat(op.amount || '0') > 0.01
+    ).length;
+    const spamTxs = ops.filter(op =>
+      op.type === 'payment' && parseFloat(op.amount || '0') < 0.001
+    ).length;
+    const spamRatio = opCount > 0 ? spamTxs / opCount : 0;
+    return {
+      ageInDays, txCount, opCount, assetCount, xlmBalance,
+      subentryCount, lastModified, claimableCount, sorobanOps,
+      lpOps, realPayments, spamRatio
+    };
   } catch { return null; }
 }
 
@@ -408,33 +476,35 @@ async function getStellarScore(gAddress) {
   ]);
 
   const horizon = horizonData.status === 'fulfilled' && horizonData.value ? horizonData.value : {
-    ageInDays: 0, txCount: 0, opCount: 0, assetCount: 0, xlmBalance: 0, subentryCount: 0
+    ageInDays: 0, txCount: 0, opCount: 0, assetCount: 0, xlmBalance: 0, subentryCount: 0, claimableCount: 0, sorobanOps: 0, lpOps: 0, realPayments: 0, spamRatio: 0
   };
   const expert = expertData.status === 'fulfilled' ? expertData.value : { trades: 0, payments: 0, trustlines: 0 };
 
   // SCORING ALGORITHM
   // Account Age — max 25 points
   const ageScore = Math.min(horizon.ageInDays / 365 * 25, 25);
-
-  // Transaction Volume — max 25 points
-  const txScore = Math.min(Math.log10(horizon.txCount + 1) * 8, 25);
-
-  // Asset Diversity — max 20 points
-  const assetScore = Math.min(horizon.assetCount * 4, 20);
-
-  // DEX Participation — max 15 points
-  const dexScore = Math.min(expert.trades * 1.5, 15);
-
-  // Network Trust Score — max 15 points
+  // Transaction Volume — max 20 points
+  const txScore = Math.min(Math.log10(horizon.txCount + 1) * 8, 20);
+  // Asset Diversity — max 15 points
+  const assetScore = Math.min(horizon.assetCount * 4, 15);
+  // DEX Participation — max 10 points
+  const dexScore = Math.min(expert.trades * 1.5, 10);
+  // Network Trust Score — max 10 points
   const trustScore = Math.min(
     (expert.trustlines * 2) + (horizon.xlmBalance > 10 ? 5 : 0) + (horizon.subentryCount * 1),
-    15
+    10
   );
-
-  const rawScore = ageScore + txScore + assetScore + dexScore + trustScore;
+  // Claimable Balance Activity — max 5 points (Stellar-native signal)
+  const claimableScore = Math.min((horizon.claimableCount || 0) * 1, 5);
+  // Soroban Contract Interactions — max 5 points (Stellar-native signal)
+  const sorobanScore = Math.min((horizon.sorobanOps || 0) * 2, 5);
+  // Liquidity Pool Participation — max 5 points (Stellar-native signal)
+  const lpScore = Math.min((horizon.lpOps || 0) * 1, 5);
+  // Spam Penalty — subtract up to 5 points
+  const spamPenalty = Math.min(Math.round((horizon.spamRatio || 0) * 10), 5);
+  const rawScore = ageScore + txScore + assetScore + dexScore + trustScore + claimableScore + sorobanScore + lpScore - spamPenalty;
   const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
   const status = finalScore>=80?'TRUSTED':finalScore>=60?'VERIFIED':finalScore>=40?'CAUTION':finalScore>=20?'RISKY':'BLACKLISTED';
-
   return {
     wallet: gAddress,
     network: 'stellar:pubnet',
@@ -445,7 +515,11 @@ async function getStellarScore(gAddress) {
       txVolume: { score: Math.round(txScore), raw: horizon.txCount + ' transactions' },
       assetDiversity: { score: Math.round(assetScore), raw: horizon.assetCount + ' assets held' },
       dexParticipation: { score: Math.round(dexScore), raw: expert.trades + ' DEX trades' },
-      networkTrust: { score: Math.round(trustScore), raw: expert.trustlines + ' trustlines' }
+      networkTrust: { score: Math.round(trustScore), raw: expert.trustlines + ' trustlines' },
+      claimableActivity: { score: Math.round(claimableScore), raw: (horizon.claimableCount || 0) + ' claimable balances' },
+      sorobanUsage: { score: Math.round(sorobanScore), raw: (horizon.sorobanOps || 0) + ' contract interactions' },
+      liquidityPools: { score: Math.round(lpScore), raw: (horizon.lpOps || 0) + ' LP interactions' },
+      spamPenalty: { score: -spamPenalty, raw: Math.round((horizon.spamRatio || 0) * 100) + '% spam ratio' }
     },
     chains: ['stellar:pubnet'],
     dataSource: 'Horizon API + Stellar Expert',
