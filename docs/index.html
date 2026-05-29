@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nulucre API Documentation</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0a0a0f;color:#c8c8d8;font-family:'SF Mono',Monaco,monospace;line-height:1.6;}
+.wrap{max-width:900px;margin:0 auto;padding:40px 24px;}
+header{border-bottom:1px solid rgba(255,255,255,0.07);padding:20px 0;margin-bottom:40px;}
+.logo{font-size:16px;font-weight:700;color:#f0f0f5;letter-spacing:0.1em;}
+.logo span{color:#00e87a;}
+h1{font-size:28px;font-weight:700;color:#f0f0f5;margin-bottom:8px;}
+h2{font-size:18px;font-weight:700;color:#f0f0f5;margin:40px 0 16px;}
+h3{font-size:14px;font-weight:700;color:#00e87a;margin:24px 0 8px;letter-spacing:0.1em;text-transform:uppercase;}
+p{font-size:14px;color:#b0b0cc;margin-bottom:12px;}
+.badge{display:inline-block;background:rgba(0,232,122,0.1);border:1px solid rgba(0,232,122,0.3);color:#00e87a;font-size:11px;padding:3px 10px;border-radius:2px;margin-bottom:24px;}
+.endpoint-block{background:#0d0d10;border:1px solid rgba(255,255,255,0.07);border-radius:4px;padding:20px;margin-bottom:16px;}
+.endpoint-row{display:flex;align-items:center;gap:12px;margin-bottom:12px;}
+.method{background:#00e87a;color:#000;font-size:11px;font-weight:700;padding:3px 8px;border-radius:2px;}
+.path{color:#5b8aff;font-size:13px;}
+.price{margin-left:auto;color:#f5a623;font-size:12px;}
+.free{color:#00e87a;}
+pre{background:#060608;border:1px solid rgba(255,255,255,0.05);border-radius:4px;padding:16px;font-size:12px;overflow-x:auto;margin:12px 0;}
+.signal-table{width:100%;border-collapse:collapse;margin:16px 0;}
+.signal-table th{text-align:left;font-size:11px;color:#8888aa;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.07);}
+.signal-table td{font-size:12px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.04);}
+.signal-table td:last-child{color:#00e87a;}
+.status-table{width:100%;border-collapse:collapse;margin:16px 0;}
+.status-table th{text-align:left;font-size:11px;color:#8888aa;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.07);}
+.status-table td{font-size:12px;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,0.04);}
+.currency-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:16px 0;}
+.currency-pill{background:#0d0d10;border:1px solid rgba(255,255,255,0.07);border-radius:2px;padding:8px 12px;font-size:11px;}
+.currency-pill span{color:#00e87a;display:block;font-weight:700;}
+.links{margin-top:40px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.07);}
+.links a{color:#5b8aff;text-decoration:none;font-size:13px;display:block;margin-bottom:8px;}
+.links a:hover{color:#00e87a;}
+.sanctions-badge{background:rgba(245,166,35,0.1);border:1px solid rgba(245,166,35,0.3);color:#f5a623;font-size:11px;padding:3px 10px;border-radius:2px;display:inline-block;margin-bottom:12px;}
+footer{margin-top:60px;padding-top:24px;border-top:1px solid rgba(255,255,255,0.07);font-size:12px;color:#8888aa;}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="logo">NULUCRE<span>.AGENTS</span></div>
+</header>
+
+<h1>API Documentation</h1>
+<div class="badge">Stellar Pubnet · Live · v3.0.0</div>
+
+<p>Nulucre scores any Stellar G... wallet address 0-100 using 8 Stellar-native Horizon API signals plus real-time OFAC sanctions screening. Pay per query in any Stellar stablecoin via x402. No accounts. No API keys.</p>
+
+<h2>Stellar Wallet Scoring</h2>
+
+<div class="endpoint-block">
+  <div class="endpoint-row">
+    <span class="method">GET</span>
+    <span class="path">/reputation/stellar/{gAddress}</span>
+    <span class="price">$0.003 USDC</span>
+  </div>
+  <p>Returns a 0-100 trust score for any Stellar G... wallet using 8 Horizon signals plus OFAC sanctions screening.</p>
+  <pre>{
+  "wallet": "GCRUBFDANV52JP3URUJ7EZGPZKFEESBTW7T3FV2SJXZZGB6HDNRBWV24",
+  "network": "stellar:pubnet",
+  "score": 56,
+  "status": "CAUTION",
+  "breakdown": {
+    "accountAge":       { "score": 22, "raw": "314 days" },
+    "txVolume":         { "score": 18, "raw": "200 transactions" },
+    "assetDiversity":   { "score": 8,  "raw": "2 assets held" },
+    "dexParticipation": { "score": 3,  "raw": "2 SDEX trades" },
+    "networkTrust":     { "score": 7,  "raw": "0 trustlines" },
+    "claimableActivity":{ "score": 5,  "raw": "6 claimable balances" },
+    "sorobanUsage":     { "score": 0,  "raw": "0 contract interactions" },
+    "liquidityPools":   { "score": 0,  "raw": "0 LP interactions" },
+    "spamPenalty":      { "score": -5, "raw": "56% spam ratio" },
+    "sanctionsCheck":   { "score": 0,  "raw": "CLEAR", "source": "OFAC/UN/EU SDN" }
+  },
+  "dataSource": "Horizon API + Stellar Expert + OFAC Sanctions Screening",
+  "timestamp": "2026-05-27T05:22:28.000Z"
+}</pre>
+</div>
+
+<div class="endpoint-block">
+  <div class="endpoint-row">
+    <span class="method">GET</span>
+    <span class="path">/reputation/stellar/signed/{gAddress}</span>
+    <span class="price">$0.010 USDC</span>
+  </div>
+  <p>Same as above with ECDSA-P256 cryptographic signature. Verify independently at the JWKS endpoint without trusting Nulucre.</p>
+</div>
+
+<h2>8 Stellar-Native Scoring Signals</h2>
+<table class="signal-table">
+  <tr><th>Signal</th><th>Max Points</th><th>Source</th></tr>
+  <tr><td>Account Age</td><td>25</td><td>Horizon API</td></tr>
+  <tr><td>Transaction Volume</td><td>20</td><td>Horizon API</td></tr>
+  <tr><td>Asset Diversity</td><td>15</td><td>Horizon API</td></tr>
+  <tr><td>SDEX DEX Participation</td><td>10</td><td>Stellar Expert</td></tr>
+  <tr><td>Network Trust</td><td>10</td><td>Horizon API</td></tr>
+  <tr><td>Claimable Balance Activity</td><td>5</td><td>Horizon API</td></tr>
+  <tr><td>Soroban Contract Interactions</td><td>5</td><td>Horizon API</td></tr>
+  <tr><td>Liquidity Pool Participation</td><td>5</td><td>Horizon API</td></tr>
+  <tr><td>Spam Detection Penalty</td><td>-5</td><td>Horizon API</td></tr>
+</table>
+
+<h2>OFAC Sanctions Screening</h2>
+<div class="sanctions-badge">Live — OFAC · UN · EU</div>
+<p>Every Stellar wallet score includes real-time sanctions screening against OFAC SDN, UN Security Council, and EU Financial Sanctions lists. A sanctioned wallet automatically returns score 0 and status BLACKLISTED.</p>
+
+<h2>Score Tiers</h2>
+<table class="status-table">
+  <tr><th>Score</th><th>Status</th><th>Meaning</th></tr>
+  <tr><td>80-100</td><td style="color:#00e87a">TRUSTED</td><td>Established wallet with strong history</td></tr>
+  <tr><td>60-79</td><td style="color:#5b8aff">VERIFIED</td><td>Good standing with moderate activity</td></tr>
+  <tr><td>40-59</td><td style="color:#f5a623">CAUTION</td><td>Limited history or mixed signals</td></tr>
+  <tr><td>20-39</td><td style="color:#ff6b6b">RISKY</td><td>Low activity or concerning patterns</td></tr>
+  <tr><td>0-19</td><td style="color:#ff4444">BLACKLISTED</td><td>Very new, suspicious, or sanctioned</td></tr>
+</table>
+
+<h2>Accepted Currencies</h2>
+<div class="currency-grid">
+  <div class="currency-pill"><span>USDC</span>US Dollar — Global</div>
+  <div class="currency-pill"><span>EURC</span>Euro — Europe</div>
+  <div class="currency-pill"><span>MXNT</span>Mexican Peso</div>
+  <div class="currency-pill"><span>NGNT</span>Nigerian Naira</div>
+  <div class="currency-pill"><span>ARST</span>Argentine Peso</div>
+  <div class="currency-pill"><span>BRL</span>Brazilian Real</div>
+</div>
+
+<h2>Free Endpoints</h2>
+
+<div class="endpoint-block">
+  <div class="endpoint-row">
+    <span class="method">GET</span>
+    <span class="path">/health</span>
+    <span class="price free">FREE</span>
+  </div>
+  <pre>{ "status": "online", "service": "Reputation Oracle" }</pre>
+</div>
+
+<h2>EVM Wallet Scoring</h2>
+
+<div class="endpoint-block">
+  <div class="endpoint-row">
+    <span class="method">GET</span>
+    <span class="path">/reputation/{wallet}</span>
+    <span class="price">$0.001 USDC</span>
+  </div>
+  <p>Scores any EVM 0x... wallet across 81+ chains using Etherscan, Moralis, Alchemy, and Ankr.</p>
+</div>
+
+<div class="endpoint-block">
+  <div class="endpoint-row">
+    <span class="method">GET</span>
+    <span class="path">/reputation/signed/{wallet}</span>
+    <span class="price">$0.010 USDC</span>
+  </div>
+  <p>EVM wallet score with ECDSA-P256 cryptographic signature.</p>
+</div>
+
+<h2>Discovery & Standards</h2>
+<div class="links">
+  <a href="/.well-known/x402.json">/.well-known/x402.json — x402 payment discovery</a>
+  <a href="/.well-known/agent.json">/.well-known/agent.json — Agent discovery</a>
+  <a href="/openapi.json">/openapi.json — OpenAPI v3.0.0 spec</a>
+  <a href="/schema/v1/stellar-reputation.json">/schema/v1/stellar-reputation.json — JSON schema</a>
+  <a href="/docs/integration-guide.md">/docs/integration-guide.md — Developer guide</a>
+  <a href="/docs/sdk/verify.js">/docs/sdk/verify.js — JavaScript SDK</a>
+  <a href="/docs/sdk/verify.py">/docs/sdk/verify.py — Python SDK</a>
+  <a href="/docs/signed-score-format.md">/docs/signed-score-format.md — Signed score format</a>
+</div>
+
+<div class="links" style="margin-top:24px;">
+  <a href="https://github.com/vjshaw/nulucre-agents" target="_blank">GitHub — github.com/vjshaw/nulucre-agents</a>
+  <a href="mailto:info@nulucre.com">info@nulucre.com</a>
+  <a href="mailto:nulucreinc@gmail.com">nulucreinc@gmail.com</a>
+</div>
+
+<footer>
+  Nulucre · Stellar Pubnet · x402 Protocol · OFAC Sanctions Screening<br>
+  Schema: nulucre.com/schema/v1/stellar-reputation.json
+</footer>
+</div>
+</body>
+</html>
