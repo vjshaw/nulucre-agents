@@ -1,0 +1,118 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nulucre.com/schema/v1/stellar-reputation.json",
+  "title": "Nulucre Stellar Wallet Reputation Score",
+  "version": "1.0.0",
+  "description": "Standardized schema for Stellar native wallet reputation scores produced by Nulucre. Scores are calculated from 8 Stellar-native Horizon API signals with real-time OFAC sanctions screening.",
+  "type": "object",
+  "required": ["wallet", "network", "score", "status", "breakdown", "dataSource", "timestamp"],
+  "properties": {
+    "wallet": {
+      "type": "string",
+      "description": "Stellar G... wallet address (56 characters)",
+      "example": "GCRUBFDANV52JP3URUJ7EZGPZKFEESBTW7T3FV2SJXZZGB6HDNRBWV24"
+    },
+    "network": {
+      "type": "string",
+      "enum": ["stellar:pubnet"],
+      "description": "CAIP-2 network identifier"
+    },
+    "score": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 100,
+      "description": "Trust score 0-100. 0 means blacklisted or sanctioned. 100 means maximum trust."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["TRUSTED", "VERIFIED", "CAUTION", "RISKY", "BLACKLISTED"],
+      "description": "TRUSTED=80-100, VERIFIED=60-79, CAUTION=40-59, RISKY=20-39, BLACKLISTED=0-19 or sanctioned"
+    },
+    "breakdown": {
+      "type": "object",
+      "description": "Individual signal scores from Stellar Horizon API",
+      "properties": {
+        "accountAge": {
+          "type": "object",
+          "properties": {
+            "score": {"type": "integer", "minimum": 0, "maximum": 25},
+            "raw": {"type": "string", "example": "314 days"}
+          }
+        },
+        "txVolume": {
+          "type": "object",
+          "properties": {
+            "score": {"type": "integer", "minimum": 0, "maximum": 20},
+            "raw": {"type": "string", "example": "200 transactions"}
+          }
+        },
+        "assetDiversity": {
+          "type": "object",
+          "properties": {
+            "score": {"type": "integer", "minimum": 0, "maximum": 15},
+            "raw": {"type": "string", "example": "2 assets held"}
+          }
+        },
+        "dexParticipation": {
+          "type": "object",
+          "properties": {
+            "score": {"type": "integer", "minimum": 0, "maximum": 10},
+            "raw": {"type": "string", "example": "2 DEX trades"}
+          }
+        },
+        "networkTrust": {
+          "type": "object",
+          "properties": {
+            "score": {"type": "integer", "minimum": 0, "maximum": 10},
+            "raw": {"type": "string", "example": "0 trustlines"}
+          }
+        },
+        "claimableActivity": {
+          "type": "object",
+          "properties": {
+            "score": {"type": "integer", "minimum": 0, "maximum": 5},
+            "raw": {"type": "string", "example": "6 claimable balances"}
+          }
+        },
+        "sorobanUsage": {
+          "type": "object",
+          "properties": {
+            "score": {"type": "integer", "minimum": 0, "maximum": 5},
+            "raw": {"type": "string", "example": "0 contract interactions"}
+          }
+        },
+        "liquidityPools": {
+          "type": "object",
+          "properties": {
+            "score": {"type": "integer", "minimum": 0, "maximum": 5},
+            "raw": {"type": "string", "example": "0 LP interactions"}
+          }
+        },
+        "spamPenalty": {
+          "type": "object",
+          "properties": {
+            "score": {"type": "integer", "minimum": -5, "maximum": 0},
+            "raw": {"type": "string", "example": "56% spam ratio"}
+          }
+        },
+        "sanctionsCheck": {
+          "type": "object",
+          "properties": {
+            "score": {"type": "integer", "enum": [0, -100]},
+            "raw": {"type": "string", "enum": ["CLEAR", "SANCTIONED", "UNCHECKED"]},
+            "source": {"type": "string", "example": "OFAC/UN/EU SDN"}
+          }
+        }
+      }
+    },
+    "dataSource": {
+      "type": "string",
+      "example": "Horizon API + Stellar Expert + OFAC Sanctions Screening"
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "example": "2026-05-27T05:22:28.000Z"
+    }
+  }
+}
