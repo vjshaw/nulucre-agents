@@ -1,0 +1,8 @@
+name: Nulucre Wallet Reputation Oracle
+description: Multi-chain wallet trust scoring for AI agents. Score Stellar G-addresses using 8 native Horizon signals including OFAC/UN/EU sanctions screening, and EVM wallets across 81+ chains. ECDSA signed scores available. Pay per query via x402 USDC micropayments.
+homepage: https://nulucre.com
+repository: https://github.com/vjshaw/nulucre-agents
+license: MIT
+startCommand:
+  type: http
+  url: https://agents.nulucre.com/mcp
