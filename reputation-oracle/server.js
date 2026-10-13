@@ -51,56 +51,6 @@ function gate(price) {
             input: { type: 'object', properties: { wallet: { type: 'string', description: 'EVM wallet address (0x...)' } }, required: ['wallet'] },
             output: { type: 'object', properties: { score: { type: 'number' }, status: { type: 'string' }, breakdown: { type: 'object' }, chains: { type: 'array' }, proof: { type: 'object' } } }
           }
-        },
-        {
-          scheme: 'exact',
-          network: 'stellar:pubnet',
-          maxAmountRequired: (parseFloat(price) * 1e7).toString(),
-          resource: req.path,
-          description: 'Reputation Query - pay in EURC (Euro) on Stellar',
-          payTo: process.env.STELLAR_ADDRESS,
-          maxTimeoutSeconds: 300,
-          asset: 'EURC-GDHU6WRG4IEQXM5NZ4BMPKOXHW76MZM4Y2IEMFDVXBSDP6SJY4ITNPP2'
-        },
-        {
-          scheme: 'exact',
-          network: 'stellar:pubnet',
-          maxAmountRequired: (parseFloat(price) * 1e7).toString(),
-          resource: req.path,
-          description: 'Reputation Query - pay in MXNT (Mexican Peso) on Stellar',
-          payTo: process.env.STELLAR_ADDRESS,
-          maxTimeoutSeconds: 300,
-          asset: 'MXNT-GBUMQHWIQELILQEQ5YEEHUFR6SRLBNRKWHJ3JX7JBRFONG24FWUDG627'
-        },
-        {
-          scheme: 'exact',
-          network: 'stellar:pubnet',
-          maxAmountRequired: (parseFloat(price) * 1e7).toString(),
-          resource: req.path,
-          description: 'Reputation Query - pay in NGNT (Nigerian Naira) on Stellar',
-          payTo: process.env.STELLAR_ADDRESS,
-          maxTimeoutSeconds: 300,
-          asset: 'NGNT-GAWODAROMJ33V5YDFY3NPYTHVYQG7MJXVJ2ND3AOGIHYRWINES6ACCPD'
-        },
-        {
-          scheme: 'exact',
-          network: 'stellar:pubnet',
-          maxAmountRequired: (parseFloat(price) * 1e7).toString(),
-          resource: req.path,
-          description: 'Reputation Query - pay in ARST (Argentine Peso) on Stellar',
-          payTo: process.env.STELLAR_ADDRESS,
-          maxTimeoutSeconds: 300,
-          asset: 'ARST-GAUC3UVRJXFTJ24C4RKDQ7LLVAT3WTKEBTA3OVX3GCTVPRUICOVKER47'
-        },
-        {
-          scheme: 'exact',
-          network: 'stellar:pubnet',
-          maxAmountRequired: (parseFloat(price) * 1e7).toString(),
-          resource: req.path,
-          description: 'Reputation Query - pay in BRL (Brazilian Real) on Stellar',
-          payTo: process.env.STELLAR_ADDRESS,
-          maxTimeoutSeconds: 300,
-          asset: 'BRL-GA3S5IFYIK4YJMEGJ5MIKRL3GNRBIN5OOAYUZNFQIEPMVBKWZP55E4QS'
         }]
       });
     }
@@ -407,19 +357,18 @@ async function getFullScoreV3(wallet) {
 
 async function fetchStellarHorizonData(gAddress) {
   try {
-    const [accountRes, txRes, opsRes, claimableRes, effectsRes] = await Promise.allSettled([
+    const [accountRes, txRes, opsRes] = await Promise.allSettled([
       axios.get(`https://horizon.stellar.org/accounts/${gAddress}`, { timeout: 10000 }),
       axios.get(`https://horizon.stellar.org/accounts/${gAddress}/transactions?limit=200&order=asc`, { timeout: 10000 }),
-      axios.get(`https://horizon.stellar.org/accounts/${gAddress}/operations?limit=200`, { timeout: 10000 }),
-      axios.get(`https://horizon.stellar.org/claimable_balances?claimant=${gAddress}&limit=20`, { timeout: 10000 }),
-      axios.get(`https://horizon.stellar.org/accounts/${gAddress}/effects?limit=200`, { timeout: 10000 })
+      axios.get(`https://horizon.stellar.org/accounts/${gAddress}/operations?limit=200`, { timeout: 10000 })
     ]);
+
     const account = accountRes.status === 'fulfilled' ? accountRes.value.data : null;
     const txs = txRes.status === 'fulfilled' ? txRes.value.data?._embedded?.records || [] : [];
     const ops = opsRes.status === 'fulfilled' ? opsRes.value.data?._embedded?.records || [] : [];
-    const claimable = claimableRes.status === 'fulfilled' ? claimableRes.value.data?._embedded?.records || [] : [];
-    const effects = effectsRes.status === 'fulfilled' ? effectsRes.value.data?._embedded?.records || [] : [];
+
     if (!account) return null;
+
     const createdAt = txs.length > 0 ? new Date(txs[0].created_at) : new Date();
     const ageInDays = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
     const txCount = txs.length;
@@ -429,25 +378,8 @@ async function fetchStellarHorizonData(gAddress) {
     const xlmBalance = parseFloat(balances.find(b => b.asset_type === 'native')?.balance || '0');
     const subentryCount = account.subentry_count || 0;
     const lastModified = account.last_modified_time || null;
-    const claimableCount = claimable.length;
-    const sorobanOps = ops.filter(op => op.type === 'invoke_host_function').length;
-    const lpOps = effects.filter(e =>
-      e.type === 'liquidity_pool_deposited' ||
-      e.type === 'liquidity_pool_withdrew' ||
-      e.type === 'liquidity_pool_trade'
-    ).length;
-    const realPayments = ops.filter(op =>
-      op.type === 'payment' && parseFloat(op.amount || '0') > 0.01
-    ).length;
-    const spamTxs = ops.filter(op =>
-      op.type === 'payment' && parseFloat(op.amount || '0') < 0.001
-    ).length;
-    const spamRatio = opCount > 0 ? spamTxs / opCount : 0;
-    return {
-      ageInDays, txCount, opCount, assetCount, xlmBalance,
-      subentryCount, lastModified, claimableCount, sorobanOps,
-      lpOps, realPayments, spamRatio
-    };
+
+    return { ageInDays, txCount, opCount, assetCount, xlmBalance, subentryCount, lastModified };
   } catch { return null; }
 }
 
@@ -465,31 +397,6 @@ async function fetchStellarExpertData(gAddress) {
   } catch { return { trades: 0, payments: 0, trustlines: 0 }; }
 }
 
-async function checkStellarSanctions(gAddress) {
-  try {
-    const apiKey = process.env.OFAC_API_KEY;
-    if (!apiKey) return { sanctioned: false, matches: 0, source: 'OFAC API', status: 'UNCHECKED' };
-    const res = await axios.post('https://api.ofac-api.com/v4/search', {
-      apiKey,
-      sources: ['SDN', 'NONSDN', 'EU', 'UN'],
-      cases: [{ id: gAddress, name: gAddress, cryptoId: gAddress }]
-    }, { timeout: 8000, headers: { 'Content-Type': 'application/json' } });
-    const results = res.data?.results || [];
-    const matches = results.filter(r => r.matchCount > 0);
-    if (matches.length > 0) {
-      return {
-        sanctioned: true,
-        matches: matches[0].matchCount,
-        source: 'OFAC/UN/EU SDN',
-        status: 'SANCTIONED'
-      };
-    }
-    return { sanctioned: false, matches: 0, source: 'OFAC/UN/EU SDN', status: 'CLEAR' };
-  } catch {
-    return { sanctioned: false, matches: 0, source: 'OFAC API unavailable', status: 'UNCHECKED' };
-  }
-}
-
 async function getStellarScore(gAddress) {
   if (!gAddress || !gAddress.startsWith('G') || gAddress.length !== 56) {
     throw new Error('Invalid Stellar address — must start with G and be 56 characters');
@@ -501,57 +408,47 @@ async function getStellarScore(gAddress) {
   ]);
 
   const horizon = horizonData.status === 'fulfilled' && horizonData.value ? horizonData.value : {
-    ageInDays: 0, txCount: 0, opCount: 0, assetCount: 0, xlmBalance: 0, subentryCount: 0, claimableCount: 0, sorobanOps: 0, lpOps: 0, realPayments: 0, spamRatio: 0
+    ageInDays: 0, txCount: 0, opCount: 0, assetCount: 0, xlmBalance: 0, subentryCount: 0
   };
   const expert = expertData.status === 'fulfilled' ? expertData.value : { trades: 0, payments: 0, trustlines: 0 };
 
   // SCORING ALGORITHM
   // Account Age — max 25 points
   const ageScore = Math.min(horizon.ageInDays / 365 * 25, 25);
-  // Transaction Volume — max 20 points
-  const txScore = Math.min(Math.log10(horizon.txCount + 1) * 8, 20);
-  // Asset Diversity — max 15 points
-  const assetScore = Math.min(horizon.assetCount * 4, 15);
-  // DEX Participation — max 10 points
-  const dexScore = Math.min(expert.trades * 1.5, 10);
-  // Network Trust Score — max 10 points
+
+  // Transaction Volume — max 25 points
+  const txScore = Math.min(Math.log10(horizon.txCount + 1) * 8, 25);
+
+  // Asset Diversity — max 20 points
+  const assetScore = Math.min(horizon.assetCount * 4, 20);
+
+  // DEX Participation — max 15 points
+  const dexScore = Math.min(expert.trades * 1.5, 15);
+
+  // Network Trust Score — max 15 points
   const trustScore = Math.min(
     (expert.trustlines * 2) + (horizon.xlmBalance > 10 ? 5 : 0) + (horizon.subentryCount * 1),
-    10
+    15
   );
-  // Claimable Balance Activity — max 5 points (Stellar-native signal)
-  const claimableScore = Math.min((horizon.claimableCount || 0) * 1, 5);
-  // Soroban Contract Interactions — max 5 points (Stellar-native signal)
-  const sorobanScore = Math.min((horizon.sorobanOps || 0) * 2, 5);
-  // Liquidity Pool Participation — max 5 points (Stellar-native signal)
-  const lpScore = Math.min((horizon.lpOps || 0) * 1, 5);
-  // Spam Penalty — subtract up to 5 points
-  const spamPenalty = Math.min(Math.round((horizon.spamRatio || 0) * 10), 5);
-  const rawScore = ageScore + txScore + assetScore + dexScore + trustScore + claimableScore + sorobanScore + lpScore - spamPenalty;
+
+  const rawScore = ageScore + txScore + assetScore + dexScore + trustScore;
   const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
   const status = finalScore>=80?'TRUSTED':finalScore>=60?'VERIFIED':finalScore>=40?'CAUTION':finalScore>=20?'RISKY':'BLACKLISTED';
-  const sanctionsResult = await checkStellarSanctions(gAddress);
-  const finalStatus = sanctionsResult.sanctioned ? 'BLACKLISTED' : status;
-  const finalScoreAdj = sanctionsResult.sanctioned ? 0 : finalScore;
+
   return {
     wallet: gAddress,
     network: 'stellar:pubnet',
-    score: finalScoreAdj,
-    status: finalStatus,
+    score: finalScore,
+    status,
     breakdown: {
       accountAge: { score: Math.round(ageScore), raw: horizon.ageInDays + ' days' },
       txVolume: { score: Math.round(txScore), raw: horizon.txCount + ' transactions' },
       assetDiversity: { score: Math.round(assetScore), raw: horizon.assetCount + ' assets held' },
       dexParticipation: { score: Math.round(dexScore), raw: expert.trades + ' DEX trades' },
-      networkTrust: { score: Math.round(trustScore), raw: expert.trustlines + ' trustlines' },
-      claimableActivity: { score: Math.round(claimableScore), raw: (horizon.claimableCount || 0) + ' claimable balances' },
-      sorobanUsage: { score: Math.round(sorobanScore), raw: (horizon.sorobanOps || 0) + ' contract interactions' },
-      liquidityPools: { score: Math.round(lpScore), raw: (horizon.lpOps || 0) + ' LP interactions' },
-      spamPenalty: { score: -spamPenalty, raw: Math.round((horizon.spamRatio || 0) * 100) + '% spam ratio' },
-      sanctionsCheck: { score: sanctionsResult.sanctioned ? -100 : 0, raw: sanctionsResult.status, source: sanctionsResult.source }
+      networkTrust: { score: Math.round(trustScore), raw: expert.trustlines + ' trustlines' }
     },
     chains: ['stellar:pubnet'],
-    dataSource: 'Horizon API + Stellar Expert + OFAC Sanctions Screening',
+    dataSource: 'Horizon API + Stellar Expert',
     timestamp: new Date().toISOString()
   };
 }
@@ -622,3 +519,151 @@ app.get('/reputation/stellar/signed/:gAddress', gate('0.01'), async (req, res) =
   }
 });
 
+
+// LIVE STATS ENDPOINT
+app.get('/stats', async (req, res) => {
+  try {
+    const { execSync } = require('child_process');
+    
+    const totalRequests = execSync(
+      'zcat /var/log/nginx/access.log.*.gz 2>/dev/null | wc -l && wc -l < /var/log/nginx/access.log'
+    ).toString().trim().split('\n').reduce((a, b) => parseInt(a) + parseInt(b), 0);
+
+    const uniqueIPs = execSync(
+      '(zcat /var/log/nginx/access.log.*.gz 2>/dev/null; cat /var/log/nginx/access.log) | awk \'{print $1}\' | sort | uniq | wc -l'
+    ).toString().trim();
+
+    const paywall402 = execSync(
+      '(zcat /var/log/nginx/access.log.*.gz 2>/dev/null; cat /var/log/nginx/access.log) | grep " 402 " | wc -l'
+    ).toString().trim();
+
+    const reputationHits = execSync(
+      '(zcat /var/log/nginx/access.log.*.gz 2>/dev/null; cat /var/log/nginx/access.log) | grep -E "reputation|verify" | wc -l'
+    ).toString().trim();
+
+    res.json({
+      totalRequests,
+      uniqueVisitors: parseInt(uniqueIPs),
+      paywallDiscoveries: parseInt(paywall402),
+      totalQueries: parseInt(reputationHits),
+      chainsSupported: 81,
+      countriesReached: 5,
+      networks: ['base-mainnet', 'stellar:pubnet'],
+      timestamp: new Date().toISOString()
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ============================================
+// XRPL NATIVE WALLET SCORING
+// ============================================
+
+async function fetchXrplData(rAddress) {
+  try {
+    const XRPL_NODE = 'https://xrplcluster.com';
+    const [accountRes, txRes, offersRes, linesRes] = await Promise.allSettled([
+      axios.post(XRPL_NODE, { method: 'account_info', params: [{ account: rAddress, ledger_index: 'current' }] }, { timeout: 10000 }),
+      axios.post(XRPL_NODE, { method: 'account_tx', params: [{ account: rAddress, limit: 200 }] }, { timeout: 10000 }),
+      axios.post(XRPL_NODE, { method: 'account_offers', params: [{ account: rAddress, limit: 50 }] }, { timeout: 10000 }),
+      axios.post(XRPL_NODE, { method: 'account_lines', params: [{ account: rAddress, limit: 50 }] }, { timeout: 10000 })
+    ]);
+    const account = accountRes.status === 'fulfilled' ? accountRes.value.data?.result?.account_data : null;
+    if (!account) return null;
+    const txs = txRes.status === 'fulfilled' ? txRes.value.data?.result?.transactions || [] : [];
+    const offers = offersRes.status === 'fulfilled' ? offersRes.value.data?.result?.offers || [] : [];
+    const lines = linesRes.status === 'fulfilled' ? linesRes.value.data?.result?.lines || [] : [];
+    const balance = parseFloat(account.Balance || '0') / 1000000;
+    const ownerCount = account.OwnerCount || 0;
+    const txCount = txs.length;
+    const offerCount = offers.length;
+    const trustlineCount = lines.length;
+    const assetCount = lines.length;
+    const payments = txs.filter(t => t.tx?.TransactionType === 'Payment').length;
+    const spamTxs = txs.filter(t => { const amt = t.tx?.Amount; return typeof amt === 'string' && parseInt(amt) < 1000; }).length;
+    const spamRatio = txCount > 0 ? spamTxs / txCount : 0;
+    const firstTx = txs.length > 0 ? txs[txs.length - 1] : null;
+    const firstLedger = firstTx?.tx?.date || null;
+    const RIPPLE_EPOCH = 946684800;
+    const firstTimestamp = firstLedger ? new Date((firstLedger + RIPPLE_EPOCH) * 1000) : new Date();
+    const ageInDays = Math.floor((Date.now() - firstTimestamp.getTime()) / (1000 * 60 * 60 * 24));
+    return { ageInDays, txCount, balance, ownerCount, offerCount, trustlineCount, assetCount, payments, spamRatio };
+  } catch { return null; }
+}
+
+async function getXrplScore(rAddress) {
+  if (!rAddress || !rAddress.startsWith('r') || rAddress.length < 25 || rAddress.length > 35) {
+    throw new Error('Invalid XRPL address — must start with r and be 25-35 characters');
+  }
+  const data = await fetchXrplData(rAddress);
+  if (!data) throw new Error('Unable to fetch XRPL account data — account may not exist');
+  const ageScore = Math.min(data.ageInDays / 365 * 25, 25);
+  const txScore = Math.min(Math.log10(data.txCount + 1) * 8, 20);
+  const assetScore = Math.min(data.assetCount * 4, 15);
+  const dexScore = Math.min(data.offerCount * 2, 10);
+  const trustScore = Math.min((data.trustlineCount * 2) + (data.balance > 10 ? 5 : 0) + (data.ownerCount > 0 ? 3 : 0), 10);
+  const paymentScore = Math.min(Math.log10(data.payments + 1) * 6, 10);
+  const spamPenalty = Math.min(Math.round(data.spamRatio * 10), 5);
+  const rawScore = ageScore + txScore + assetScore + dexScore + trustScore + paymentScore - spamPenalty;
+  const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+  const status = finalScore >= 80 ? 'TRUSTED' : finalScore >= 60 ? 'VERIFIED' : finalScore >= 40 ? 'CAUTION' : finalScore >= 20 ? 'RISKY' : 'BLACKLISTED';
+  const sanctionsResult = await checkStellarSanctions(rAddress);
+  const finalStatus = sanctionsResult.sanctioned ? 'BLACKLISTED' : status;
+  const finalScoreAdj = sanctionsResult.sanctioned ? 0 : finalScore;
+  return {
+    wallet: rAddress,
+    network: 'xrpl:mainnet',
+    score: finalScoreAdj,
+    status: finalStatus,
+    breakdown: {
+      accountAge: { score: Math.round(ageScore), raw: data.ageInDays + ' days' },
+      txVolume: { score: Math.round(txScore), raw: data.txCount + ' transactions' },
+      assetDiversity: { score: Math.round(assetScore), raw: data.assetCount + ' trustlines' },
+      dexParticipation: { score: Math.round(dexScore), raw: data.offerCount + ' open DEX offers' },
+      networkTrust: { score: Math.round(trustScore), raw: data.trustlineCount + ' trustlines, ' + data.balance.toFixed(2) + ' XRP balance' },
+      paymentActivity: { score: Math.round(paymentScore), raw: data.payments + ' payments' },
+      spamPenalty: { score: -spamPenalty, raw: Math.round(data.spamRatio * 100) + '% spam ratio' },
+      sanctionsCheck: { score: sanctionsResult.sanctioned ? -100 : 0, raw: sanctionsResult.status, source: sanctionsResult.source }
+    },
+    chains: ['xrpl:mainnet'],
+    dataSource: 'XRPL Ledger API (xrplcluster.com) + OFAC Sanctions Screening',
+    timestamp: new Date().toISOString()
+  };
+}
+
+// XRPL TEST ENDPOINT — free, no payment required
+app.get('/reputation/xrpl/rTEST00000000000000000000000000000', (req, res) => {
+  res.json({ wallet: 'rTEST00000000000000000000000000000', network: 'xrpl:mainnet', score: 72, status: 'VERIFIED', note: 'Test endpoint — static response, no payment required', timestamp: new Date().toISOString() });
+});
+
+// XRPL REPUTATION ENDPOINT
+app.get('/reputation/xrpl/:rAddress', gate('0.003'), async (req, res) => {
+  try {
+    const { rAddress } = req.params;
+    const score = await getXrplScore(rAddress);
+    res.json(score);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// XRPL SIGNED REPUTATION ENDPOINT
+app.get('/reputation/xrpl/signed/:rAddress', gate('0.01'), async (req, res) => {
+  try {
+    const { rAddress } = req.params;
+    const score = await getXrplScore(rAddress);
+    const fs = require('fs');
+    const crypto = require('crypto');
+    const privateKey = fs.readFileSync(process.env.NULUCRE_PRIVATE_KEY_PATH || '/root/agents/nulucre-private.pem', 'utf8');
+    const payload = { wallet: score.wallet, network: score.network, score: score.score, status: score.status, timestamp: score.timestamp };
+    const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64');
+    const sign = crypto.createSign('SHA256');
+    sign.update(payloadB64);
+    const signature = sign.sign({ key: privateKey, dsaEncoding: 'ieee-p1363' }, 'base64');
+    res.json({ ...score, proof: { signature, algorithm: 'ECDSA-P256', signedBy: 'nulucre.com', verifyAt: 'https://nulucre.com/.well-known/jwks.json', payload: payloadB64 } });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});

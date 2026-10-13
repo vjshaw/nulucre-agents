@@ -130,3 +130,15 @@ function wrapError(error: unknown, context: string): NulucreApiError {
     `Unexpected error during ${context}: ${(error as Error).message}`
   );
 }
+
+export async function fetchXrplScore(rAddress: string, signed: boolean = false): Promise<any> {
+  const endpoint = signed
+    ? "/reputation/xrpl/signed/" + rAddress
+    : "/reputation/xrpl/" + rAddress;
+  const BASE_URL = process.env.NULUCRE_API_URL || "https://agents.nulucre.com";
+  const response = await fetch(BASE_URL + endpoint);
+  const data = await response.json();
+  if (response.status === 402) return data;
+  if (!response.ok) throw new NulucreApiError("XRPL score fetch failed: " + response.status);
+  return data;
+}

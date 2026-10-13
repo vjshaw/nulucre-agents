@@ -117,3 +117,25 @@ ${rows}
 - 20-39 RISKY — low activity or concerning patterns
 - 0-19 BLACKLISTED — very new, suspicious, or sanctioned`;
 }
+
+export function formatXrplScoreMarkdown(data: any): string {
+  const score = data.score ?? 0;
+  const status = data.status ?? "UNKNOWN";
+  const wallet = data.wallet ?? "unknown";
+  const breakdown = data.breakdown ?? {};
+  const bar = "█".repeat(Math.floor(score / 10)) + "░".repeat(10 - Math.floor(score / 10));
+  let md = "## Nulucre XRPL Wallet Score\n\n";
+  md += "**Wallet:** " + wallet + "\n";
+  md += "**Network:** xrpl:mainnet\n";
+  md += "**Score:** " + score + "/100 [" + bar + "]\n";
+  md += "**Status:** " + status + "\n\n";
+  md += "### Signal Breakdown\n";
+  for (const [key, val] of Object.entries(breakdown)) {
+    const v = val as any;
+    md += "- **" + key + ":** " + v.score + " pts — " + v.raw + "\n";
+  }
+  md += "\n**Data Source:** " + (data.dataSource ?? "XRPL Ledger API") + "\n";
+  md += "**Timestamp:** " + (data.timestamp ?? "") + "\n";
+  if (data.proof) md += "\n**Signed:** Yes — verify at " + data.proof.verifyAt + "\n";
+  return md;
+}
