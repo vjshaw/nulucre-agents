@@ -51,6 +51,16 @@ function gate(price) {
             input: { type: 'object', properties: { wallet: { type: 'string', description: 'EVM wallet address (0x...)' } }, required: ['wallet'] },
             output: { type: 'object', properties: { score: { type: 'number' }, status: { type: 'string' }, breakdown: { type: 'object' }, chains: { type: 'array' }, proof: { type: 'object' } } }
           }
+        },
+        {
+          scheme: 'exact',
+          network: 'solana:mainnet',
+          maxAmountRequired: (parseFloat(price) * 1e6).toString(),
+          resource: req.path,
+          description: `Reputation Query - $${price} USDC on Solana`,
+          payTo: process.env.SOLANA_ADDRESS || 'GCRUBFDANv52JP3URUJ7EZGPZKFEESBTW7T3FV2SJXZZGB6HDNRBWV24',
+          maxTimeoutSeconds: 300,
+          asset: 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
         }]
       });
     }
