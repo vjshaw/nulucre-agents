@@ -1,2 +1,4 @@
 node_modules/
 dist/
+nulucre-mcp-server/.mcpregistry_github_token
+nulucre-mcp-server/.mcpregistry_registry_token
