@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.vjshaw/nulucre-wallet-reputation",
   "description": "Wallet trust scores for AI agents. Stellar, XRPL, EVM 81+ chains. OFAC sanctions. x402 payments.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "repository": {
     "url": "https://github.com/vjshaw/nulucre-agents",
     "source": "github"
