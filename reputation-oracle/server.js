@@ -667,3 +667,126 @@ app.get('/reputation/xrpl/signed/:rAddress', gate('0.01'), async (req, res) => {
     res.status(400).json({ error: err.message });
   }
 });
+
+
+// ============================================
+// SOLANA NATIVE WALLET SCORING
+// ============================================
+
+async function fetchSolanaData(address) {
+  try {
+    const RPC = 'https://api.mainnet-beta.solana.com';
+    const post = (method, params) => axios.post(RPC, { jsonrpc: '2.0', id: 1, method, params }, { timeout: 10000 });
+
+    const [accountRes, sigRes, tokenRes] = await Promise.allSettled([
+      post('getAccountInfo', [address, { encoding: 'jsonParsed' }]),
+      post('getSignaturesForAddress', [address, { limit: 200 }]),
+      post('getTokenAccountsByOwner', [address, { programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' }, { encoding: 'jsonParsed' }])
+    ]);
+
+    const account = accountRes.status === 'fulfilled' ? accountRes.value.data?.result?.value : null;
+    if (!account) return null;
+
+    const sigs = sigRes.status === 'fulfilled' ? sigRes.value.data?.result || [] : [];
+    const tokens = tokenRes.status === 'fulfilled' ? tokenRes.value.data?.result?.value || [] : [];
+
+    const lamports = account.lamports || 0;
+    const solBalance = lamports / 1e9;
+    const txCount = sigs.length;
+    const tokenCount = tokens.length;
+    const executable = account.executable || false;
+
+    const errorTxs = sigs.filter(s => s.err !== null).length;
+    const errorRatio = txCount > 0 ? errorTxs / txCount : 0;
+
+    const timestamps = sigs.filter(s => s.blockTime).map(s => s.blockTime);
+    const oldestTs = timestamps.length > 0 ? Math.min(...timestamps) : Date.now() / 1000;
+    const ageInDays = Math.floor((Date.now() / 1000 - oldestTs) / 86400);
+
+    const recentSigs = sigs.filter(s => s.blockTime && s.blockTime > (Date.now() / 1000 - 30 * 86400));
+    const recentActivity = recentSigs.length;
+
+    return { solBalance, txCount, tokenCount, executable, errorRatio, ageInDays, recentActivity };
+  } catch { return null; }
+}
+
+async function getSolanaScore(address) {
+  if (!address || address.length < 32 || address.length > 44) {
+    throw new Error('Invalid Solana address — must be 32-44 characters (base58)');
+  }
+
+  const data = await fetchSolanaData(address);
+  if (!data) throw new Error('Unable to fetch Solana account data — account may not exist');
+
+  // SCORING ALGORITHM
+  const ageScore = Math.min(data.ageInDays / 365 * 25, 25);
+  const txScore = Math.min(Math.log10(data.txCount + 1) * 8, 20);
+  const balanceScore = Math.min(Math.log10(data.solBalance + 1) * 8, 15);
+  const tokenScore = Math.min(data.tokenCount * 2, 10);
+  const activityScore = Math.min(data.recentActivity * 0.5, 10);
+  const executableBonus = data.executable ? 5 : 0;
+  const errorPenalty = Math.min(Math.round(data.errorRatio * 15), 15);
+
+  const rawScore = ageScore + txScore + balanceScore + tokenScore + activityScore + executableBonus - errorPenalty;
+  const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+  const status = finalScore >= 80 ? 'TRUSTED' : finalScore >= 60 ? 'VERIFIED' : finalScore >= 40 ? 'CAUTION' : finalScore >= 20 ? 'RISKY' : 'BLACKLISTED';
+
+  const sanctionsResult = await checkStellarSanctions(address);
+  const finalStatus = sanctionsResult.sanctioned ? 'BLACKLISTED' : status;
+  const finalScoreAdj = sanctionsResult.sanctioned ? 0 : finalScore;
+
+  return {
+    wallet: address,
+    network: 'solana:mainnet',
+    score: finalScoreAdj,
+    status: finalStatus,
+    breakdown: {
+      accountAge: { score: Math.round(ageScore), raw: data.ageInDays + ' days' },
+      txVolume: { score: Math.round(txScore), raw: data.txCount + ' transactions' },
+      solBalance: { score: Math.round(balanceScore), raw: data.solBalance.toFixed(4) + ' SOL' },
+      tokenDiversity: { score: Math.round(tokenScore), raw: data.tokenCount + ' token accounts' },
+      recentActivity: { score: Math.round(activityScore), raw: data.recentActivity + ' txs in last 30 days' },
+      executableBonus: { score: executableBonus, raw: data.executable ? 'Program account' : 'Wallet account' },
+      errorPenalty: { score: -errorPenalty, raw: Math.round(data.errorRatio * 100) + '% failed transactions' },
+      sanctionsCheck: { score: sanctionsResult.sanctioned ? -100 : 0, raw: sanctionsResult.status, source: sanctionsResult.source }
+    },
+    chains: ['solana:mainnet'],
+    dataSource: 'Solana RPC (api.mainnet-beta.solana.com) + OFAC Sanctions Screening',
+    timestamp: new Date().toISOString()
+  };
+}
+
+// SOLANA TEST ENDPOINT — free, no payment required
+app.get('/reputation/solana/TEST11111111111111111111111111111111111111', (req, res) => {
+  res.json({ wallet: 'TEST11111111111111111111111111111111111111', network: 'solana:mainnet', score: 72, status: 'VERIFIED', note: 'Test endpoint — static response, no payment required', timestamp: new Date().toISOString() });
+});
+
+// SOLANA REPUTATION ENDPOINT
+app.get('/reputation/solana/:address', gate('0.003'), async (req, res) => {
+  try {
+    const { address } = req.params;
+    const score = await getSolanaScore(address);
+    res.json(score);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// SOLANA SIGNED REPUTATION ENDPOINT
+app.get('/reputation/solana/signed/:address', gate('0.01'), async (req, res) => {
+  try {
+    const { address } = req.params;
+    const score = await getSolanaScore(address);
+    const fs = require('fs');
+    const crypto = require('crypto');
+    const privateKey = fs.readFileSync(process.env.NULUCRE_PRIVATE_KEY_PATH || '/root/agents/nulucre-private.pem', 'utf8');
+    const payload = { wallet: score.wallet, network: score.network, score: score.score, status: score.status, timestamp: score.timestamp };
+    const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64');
+    const sign = crypto.createSign('SHA256');
+    sign.update(payloadB64);
+    const signature = sign.sign({ key: privateKey, dsaEncoding: 'ieee-p1363' }, 'base64');
+    res.json({ ...score, proof: { signature, algorithm: 'ECDSA-P256', signedBy: 'nulucre.com', verifyAt: 'https://nulucre.com/.well-known/jwks.json', payload: payloadB64 } });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});

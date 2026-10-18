@@ -6,6 +6,7 @@ import express from "express";
 
 import { registerStellarWalletScoreTool } from "./tools/stellarWalletScore.js";
 import { registerEvmWalletScoreTool } from "./tools/evmWalletScore.js";
+import { registerSolanaWalletScoreTool } from "./tools/solanaWalletScore.js";
 import { registerXrplWalletScoreTool } from "./tools/xrplWalletScore.js";
 import { registerHealthCheckTool } from "./tools/healthCheck.js";
 
@@ -17,7 +18,8 @@ function createServer(): McpServer {
 
   registerStellarWalletScoreTool(server);
   registerEvmWalletScoreTool(server);
-  registerXrplWalletScoreTool(server);
+  registerSolanaWalletScoreTool(server);
+    registerXrplWalletScoreTool(server);
     registerHealthCheckTool(server);
 
   return server;

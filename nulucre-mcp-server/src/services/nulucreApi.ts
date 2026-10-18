@@ -142,3 +142,15 @@ export async function fetchXrplScore(rAddress: string, signed: boolean = false):
   if (!response.ok) throw new NulucreApiError("XRPL score fetch failed: " + response.status);
   return data;
 }
+
+export async function fetchSolanaScore(address: string, signed: boolean = false): Promise<any> {
+  const endpoint = signed
+    ? "/reputation/solana/signed/" + address
+    : "/reputation/solana/" + address;
+  const BASE_URL = process.env.NULUCRE_API_URL || "https://agents.nulucre.com";
+  const response = await fetch(BASE_URL + endpoint);
+  const data = await response.json();
+  if (response.status === 402) return data;
+  if (!response.ok) throw new NulucreApiError("Solana score fetch failed: " + response.status);
+  return data;
+}
