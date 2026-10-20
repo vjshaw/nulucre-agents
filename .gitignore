@@ -1,0 +1,6 @@
+.env
+.env.save
+.env.local
+*.pem
+node_modules/
+*.tar.gz
