@@ -1088,6 +1088,43 @@
     </div>
   </section>
 
+  <!-- Validation Status -->
+  <section class="chain-section" id="validation">
+    <div class="section-label">Validation status</div>
+    <h2>What Nulucre is today — and what it will be</h2>
+    <p class="section-desc">Nulucre is a deterministic, transparent, sanctions-screened signal. It is not yet a validated predictor of counterparty risk. The distinction matters.</p>
+
+    <div class="sanctions-card" style="margin-top:24px;">
+      <span class="sanctions-icon">✓</span>
+      <div class="sanctions-text">
+        <strong>What Nulucre can claim today</strong><br><br>
+        <strong>Deterministic:</strong> The same wallet address returns the same score for the same on-chain state. The formula is public and auditable at this page.<br><br>
+        <strong>Tamper-resistant inputs:</strong> Scores are computed from on-chain data — transaction history, wallet age, asset holdings — that cannot be altered retroactively.<br><br>
+        <strong>Sanctions-screened:</strong> Every query runs real-time checks against OFAC SDN, OFAC Non-SDN, EU Financial Sanctions, and UN Security Council lists before a behavioral score is returned.<br><br>
+        <strong>Agent-native:</strong> $0.001 USDC per query via x402 micropayments. No accounts, no API keys, no human provisioning required.<br><br>
+        <strong>Honest about uncertainty:</strong> Wallets with too few transactions return <code>INSUFFICIENT_DATA</code> rather than a misleading low score.
+      </div>
+    </div>
+
+    <div class="sanctions-card" style="margin-top:16px;">
+      <span class="sanctions-icon">ℹ</span>
+      <div class="sanctions-text">
+        <strong>What the validation report will establish</strong><br><br>
+        Determinism and transparency do not equal accuracy. A scoring formula can be public and still be a poor model of trustworthiness if the wrong signals are weighted. The only way to establish predictive validity is to compare scores against outcomes.<br><br>
+        A prospective cohort was started on <strong>October 20, 2026</strong>. Every paid query is logged with wallet, chain, score, status, and signal breakdown. In 90 days — approximately <strong>January 18, 2027</strong> — those initial scores will be compared against actual wallet behavior during the observation window.<br><br>
+        The validation report will answer: did high-scoring wallets behave more reliably than low-scoring ones? Until that report is published with real outcome data, treat Nulucre scores as one useful, cheap, transparent input — not a proven predictor.
+      </div>
+    </div>
+
+    <div class="sanctions-card" style="margin-top:16px; border-left: 3px solid #888;">
+      <span class="sanctions-icon">→</span>
+      <div class="sanctions-text">
+        <strong>Use Nulucre today if:</strong> you need a fast, cheap, sanctions-screened signal before a low-stakes agent transaction and want deterministic, auditable scoring.<br><br>
+        <strong>Wait for the validation report if:</strong> you need a proven predictor of counterparty reliability for high-stakes decisions. That document will exist in January 2027.
+      </div>
+    </div>
+  </section>
+
 </main>
 
 <footer class="site-footer">
