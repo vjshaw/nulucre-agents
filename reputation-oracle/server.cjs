@@ -4,6 +4,23 @@ const app = express();
 app.use(express.json());
 
 // FREE TEST ENDPOINT - no payment required
+// Snapshot logger for validation cohort
+const fs = require('fs');
+const SNAPSHOT_LOG = '/root/agents/reputation-oracle/score-snapshots.ndjson';
+function logSnapshot(chain, wallet, result) {
+  try {
+    const entry = JSON.stringify({
+      ts: new Date().toISOString(),
+      chain,
+      wallet,
+      score: result.score,
+      status: result.status,
+      signals: result.breakdown || null
+    }) + '\n';
+    fs.appendFileSync(SNAPSHOT_LOG, entry);
+  } catch (e) { /* non-fatal */ }
+}
+
 app.get('/reputation/0x000000000000000000000000000000000000TEST', (req, res) => {
   res.json({
     wallet: '0x000000000000000000000000000000000000TEST',
@@ -123,14 +140,256 @@ async function getScore(wallet) {
   const status = score>=80?'TRUSTED':score>=60?'VERIFIED':score>=40?'CAUTION':score>=20?'RISKY':'BLACKLISTED';
   return { wallet, score, status, breakdown: { walletAge: { score: Math.round(ageScore), raw: Math.round(ageInDays) + ' days' }, txVolume: { score: Math.round(txScore), raw: txCount + ' txs' } }, timestamp: new Date().toISOString() };
 }
-app.get('/reputation/', (req, res) => res.json({ service: 'Reputation Oracle', usage: 'GET /reputation/{wallet}', price: '$0.001 USDC' }));
+app.get('/reputation/', (req, res) => res.json({ service: 'Reputation Oracle', usage: 'GET /reputation/{wallet}', price: '$0.001 USDC', methodology: 'https://agents.nulucre.com/methodology', chains: ['evm-81+', 'stellar:pubnet', 'xrpl:mainnet', 'solana:mainnet'] }));
 app.get('/health', (req, res) => res.json({ status: 'online', service: 'Reputation Oracle' }));
 app.get('/reputation/:wallet', gate('0.001'), async (req, res) => {
   const { wallet } = req.params;
   if (!/^0x[a-fA-F0-9]{40}$/.test(wallet)) return res.status(400).json({ error: 'Invalid wallet' });
-  try { res.json(await getFullScoreV3(wallet)); }
+  try {
+    const result = await getFullScoreV3(wallet);
+    logSnapshot('evm', wallet, result);
+    res.json(result);
+  }
   catch (err) { res.status(500).json({ error: err.message }); }
 });
+app.get('/methodology', (req, res) => {
+  try {
+    const html = fs.readFileSync('/root/agents/reputation-oracle/methodology.html', 'utf8');
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (e) {
+    res.status(500).json({ error: 'Methodology page unavailable' });
+  }
+});
+
+// ============================================
+// XRPL NATIVE WALLET SCORING
+// ============================================
+
+async function fetchXrplData(rAddress) {
+  try {
+    const XRPL_NODE = 'https://xrplcluster.com';
+    const [accountRes, txRes, offersRes, linesRes] = await Promise.allSettled([
+      axios.post(XRPL_NODE, { method: 'account_info', params: [{ account: rAddress, ledger_index: 'current' }] }, { timeout: 10000 }),
+      axios.post(XRPL_NODE, { method: 'account_tx', params: [{ account: rAddress, limit: 200 }] }, { timeout: 10000 }),
+      axios.post(XRPL_NODE, { method: 'account_offers', params: [{ account: rAddress, limit: 50 }] }, { timeout: 10000 }),
+      axios.post(XRPL_NODE, { method: 'account_lines', params: [{ account: rAddress, limit: 50 }] }, { timeout: 10000 })
+    ]);
+    const account = accountRes.status === 'fulfilled' ? accountRes.value.data?.result?.account_data : null;
+    if (!account) return null;
+    const txs = txRes.status === 'fulfilled' ? txRes.value.data?.result?.transactions || [] : [];
+    const offers = offersRes.status === 'fulfilled' ? offersRes.value.data?.result?.offers || [] : [];
+    const lines = linesRes.status === 'fulfilled' ? linesRes.value.data?.result?.lines || [] : [];
+    const balance = parseFloat(account.Balance || '0') / 1000000;
+    const ownerCount = account.OwnerCount || 0;
+    const txCount = txs.length;
+    const offerCount = offers.length;
+    const trustlineCount = lines.length;
+    const assetCount = lines.length;
+    const payments = txs.filter(t => t.tx?.TransactionType === 'Payment').length;
+    const spamTxs = txs.filter(t => { const amt = t.tx?.Amount; return typeof amt === 'string' && parseInt(amt) < 1000; }).length;
+    const spamRatio = txCount > 0 ? spamTxs / txCount : 0;
+    const firstTx = txs.length > 0 ? txs[txs.length - 1] : null;
+    const firstLedger = firstTx?.tx?.date || null;
+    const RIPPLE_EPOCH = 946684800;
+    const firstTimestamp = firstLedger ? new Date((firstLedger + RIPPLE_EPOCH) * 1000) : new Date();
+    const ageInDays = Math.floor((Date.now() - firstTimestamp.getTime()) / (1000 * 60 * 60 * 24));
+    return { ageInDays, txCount, balance, ownerCount, offerCount, trustlineCount, assetCount, payments, spamRatio };
+  } catch { return null; }
+}
+
+async function getXrplScore(rAddress) {
+  if (!rAddress || !rAddress.startsWith('r') || rAddress.length < 25 || rAddress.length > 35) {
+    throw new Error('Invalid XRPL address — must start with r and be 25-35 characters');
+  }
+  // Sanctions first — sanctioned thin wallets must return BLACKLISTED, not INSUFFICIENT_DATA
+  const sanctionsResult = await checkStellarSanctions(rAddress);
+  if (sanctionsResult.sanctioned) {
+    return { wallet: rAddress, score: 0, status: 'BLACKLISTED', message: 'Address matches sanctions list', sanctionsCheck: { matches: sanctionsResult.matches, source: sanctionsResult.source }, timestamp: new Date().toISOString() };
+  }
+  const data = await fetchXrplData(rAddress);
+  if (!data) throw new Error('Unable to fetch XRPL account data — account may not exist');
+  if (data.txCount < 3) return { wallet: rAddress, score: null, status: 'INSUFFICIENT_DATA', message: 'Too few transactions to score reliably', reason: 'transaction_count_below_threshold', threshold: 3, actual: data.txCount, timestamp: new Date().toISOString() };
+  const ageScore = Math.min(data.ageInDays / 365 * 25, 25);
+  const txScore = Math.min(Math.log10(data.txCount + 1) * 8, 20);
+  const assetScore = Math.min(data.assetCount * 4, 15);
+  const dexScore = Math.min(data.offerCount * 2, 10);
+  const trustScore = Math.min((data.trustlineCount * 2) + (data.balance > 10 ? 5 : 0) + (data.ownerCount > 0 ? 3 : 0), 10);
+  const paymentScore = Math.min(Math.log10(data.payments + 1) * 6, 10);
+  const spamPenalty = Math.min(Math.round(data.spamRatio * 10), 5);
+  const rawScore = ageScore + txScore + assetScore + dexScore + trustScore + paymentScore - spamPenalty;
+  const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+  const status = finalScore >= 80 ? 'TRUSTED' : finalScore >= 60 ? 'VERIFIED' : finalScore >= 40 ? 'CAUTION' : finalScore >= 20 ? 'RISKY' : 'BLACKLISTED';
+  return {
+    wallet: rAddress,
+    network: 'xrpl:mainnet',
+    score: finalScore,
+    status,
+    breakdown: {
+      accountAge: { score: Math.round(ageScore), raw: data.ageInDays + ' days' },
+      txVolume: { score: Math.round(txScore), raw: data.txCount + ' transactions' },
+      assetDiversity: { score: Math.round(assetScore), raw: data.assetCount + ' trustlines' },
+      dexParticipation: { score: Math.round(dexScore), raw: data.offerCount + ' open DEX offers' },
+      networkTrust: { score: Math.round(trustScore), raw: data.trustlineCount + ' trustlines, ' + data.balance.toFixed(2) + ' XRP balance' },
+      paymentActivity: { score: Math.round(paymentScore), raw: data.payments + ' payments' },
+      spamPenalty: { score: -spamPenalty, raw: Math.round(data.spamRatio * 100) + '% spam ratio' },
+      sanctionsCheck: { score: 0, raw: sanctionsResult.status, source: sanctionsResult.source }
+    },
+    chains: ['xrpl:mainnet'],
+    dataSource: 'XRPL Ledger API (xrplcluster.com) + OFAC Sanctions Screening',
+    timestamp: new Date().toISOString()
+  };
+}
+
+// XRPL TEST ENDPOINT — free, no payment required
+app.get('/reputation/xrpl/rTEST00000000000000000000000000000', (req, res) => {
+  res.json({ wallet: 'rTEST00000000000000000000000000000', network: 'xrpl:mainnet', score: 72, status: 'VERIFIED', note: 'Test endpoint — static response, no payment required', timestamp: new Date().toISOString() });
+});
+
+// XRPL REPUTATION ENDPOINT
+app.get('/reputation/xrpl/:rAddress', gate('0.001'), async (req, res) => {
+  try {
+    const { rAddress } = req.params;
+    const score = await getXrplScore(rAddress);
+    logSnapshot('xrpl', rAddress, score);
+    res.json(score);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// XRPL SIGNED REPUTATION ENDPOINT
+app.get('/reputation/xrpl/signed/:rAddress', gate('0.01'), async (req, res) => {
+  try {
+    const { rAddress } = req.params;
+    const score = await getXrplScore(rAddress);
+    const crypto = require('crypto');
+    const privateKey = fs.readFileSync(process.env.NULUCRE_PRIVATE_KEY_PATH || '/root/agents/nulucre-private.pem', 'utf8');
+    const payload = { wallet: score.wallet, network: score.network, score: score.score, status: score.status, timestamp: score.timestamp };
+    const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64');
+    const sign = crypto.createSign('SHA256');
+    sign.update(payloadB64);
+    const signature = sign.sign({ key: privateKey, dsaEncoding: 'ieee-p1363' }, 'base64');
+    logSnapshot('xrpl-signed', rAddress, score);
+    res.json({ ...score, proof: { signature, algorithm: 'ECDSA-P256', signedBy: 'nulucre.com', verifyAt: 'https://nulucre.com/.well-known/jwks.json', payload: payloadB64 } });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// ============================================
+// SOLANA NATIVE WALLET SCORING
+// ============================================
+
+async function fetchSolanaData(address) {
+  try {
+    const RPC = 'https://api.mainnet-beta.solana.com';
+    const post = (method, params) => axios.post(RPC, { jsonrpc: '2.0', id: 1, method, params }, { timeout: 10000 });
+    const [accountRes, sigRes, tokenRes] = await Promise.allSettled([
+      post('getAccountInfo', [address, { encoding: 'jsonParsed' }]),
+      post('getSignaturesForAddress', [address, { limit: 200 }]),
+      post('getTokenAccountsByOwner', [address, { programId: 'TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA' }, { encoding: 'jsonParsed' }])
+    ]);
+    const account = accountRes.status === 'fulfilled' ? accountRes.value.data?.result?.value : null;
+    if (!account) return null;
+    const sigs = sigRes.status === 'fulfilled' ? sigRes.value.data?.result || [] : [];
+    const tokens = tokenRes.status === 'fulfilled' ? tokenRes.value.data?.result?.value || [] : [];
+    const lamports = account.lamports || 0;
+    const solBalance = lamports / 1e9;
+    const txCount = sigs.length;
+    const tokenCount = tokens.length;
+    const executable = account.executable || false;
+    const errorTxs = sigs.filter(s => s.err !== null).length;
+    const errorRatio = txCount > 0 ? errorTxs / txCount : 0;
+    const timestamps = sigs.filter(s => s.blockTime).map(s => s.blockTime);
+    const oldestTs = timestamps.length > 0 ? Math.min(...timestamps) : Date.now() / 1000;
+    const ageInDays = Math.floor((Date.now() / 1000 - oldestTs) / 86400);
+    const recentSigs = sigs.filter(s => s.blockTime && s.blockTime > (Date.now() / 1000 - 30 * 86400));
+    const recentActivity = recentSigs.length;
+    return { solBalance, txCount, tokenCount, executable, errorRatio, ageInDays, recentActivity };
+  } catch { return null; }
+}
+
+async function getSolanaScore(address) {
+  if (!address || address.length < 32 || address.length > 44) {
+    throw new Error('Invalid Solana address — must be 32-44 characters (base58)');
+  }
+  // Sanctions first — sanctioned thin wallets must return BLACKLISTED, not INSUFFICIENT_DATA
+  const sanctionsResult = await checkStellarSanctions(address);
+  if (sanctionsResult.sanctioned) {
+    return { wallet: address, score: 0, status: 'BLACKLISTED', message: 'Address matches sanctions list', sanctionsCheck: { matches: sanctionsResult.matches, source: sanctionsResult.source }, timestamp: new Date().toISOString() };
+  }
+  const data = await fetchSolanaData(address);
+  if (!data) throw new Error('Unable to fetch Solana account data — account may not exist');
+  if (data.txCount < 5) return { wallet: address, score: null, status: 'INSUFFICIENT_DATA', message: 'Too few transactions to score reliably', reason: 'transaction_count_below_threshold', threshold: 5, actual: data.txCount, timestamp: new Date().toISOString() };
+  const ageScore = Math.min(data.ageInDays / 365 * 25, 25);
+  const txScore = Math.min(Math.log10(data.txCount + 1) * 8, 20);
+  const balanceScore = Math.min(Math.log10(data.solBalance + 1) * 8, 15);
+  const tokenScore = Math.min(data.tokenCount * 2, 10);
+  const activityScore = Math.min(data.recentActivity * 0.5, 10);
+  const executableBonus = data.executable ? 5 : 0;
+  const errorPenalty = Math.min(Math.round(data.errorRatio * 15), 15);
+  const rawScore = ageScore + txScore + balanceScore + tokenScore + activityScore + executableBonus - errorPenalty;
+  const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+  const status = finalScore >= 80 ? 'TRUSTED' : finalScore >= 60 ? 'VERIFIED' : finalScore >= 40 ? 'CAUTION' : finalScore >= 20 ? 'RISKY' : 'BLACKLISTED';
+  return {
+    wallet: address,
+    network: 'solana:mainnet',
+    score: finalScore,
+    status,
+    breakdown: {
+      accountAge: { score: Math.round(ageScore), raw: data.ageInDays + ' days' },
+      txVolume: { score: Math.round(txScore), raw: data.txCount + ' transactions' },
+      solBalance: { score: Math.round(balanceScore), raw: data.solBalance.toFixed(4) + ' SOL' },
+      tokenDiversity: { score: Math.round(tokenScore), raw: data.tokenCount + ' token accounts' },
+      recentActivity: { score: Math.round(activityScore), raw: data.recentActivity + ' txs in last 30 days' },
+      executableBonus: { score: executableBonus, raw: data.executable ? 'Program account' : 'Wallet account' },
+      errorPenalty: { score: -errorPenalty, raw: Math.round(data.errorRatio * 100) + '% failed transactions' },
+      sanctionsCheck: { score: 0, raw: sanctionsResult.status, source: sanctionsResult.source }
+    },
+    chains: ['solana:mainnet'],
+    dataSource: 'Solana RPC (api.mainnet-beta.solana.com) + OFAC Sanctions Screening',
+    timestamp: new Date().toISOString()
+  };
+}
+
+// SOLANA TEST ENDPOINT — free, no payment required
+app.get('/reputation/solana/TEST11111111111111111111111111111111111111', (req, res) => {
+  res.json({ wallet: 'TEST11111111111111111111111111111111111111', network: 'solana:mainnet', score: 72, status: 'VERIFIED', note: 'Test endpoint — static response, no payment required', timestamp: new Date().toISOString() });
+});
+
+// SOLANA REPUTATION ENDPOINT
+app.get('/reputation/solana/:address', gate('0.001'), async (req, res) => {
+  try {
+    const { address } = req.params;
+    const score = await getSolanaScore(address);
+    logSnapshot('solana', address, score);
+    res.json(score);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// SOLANA SIGNED REPUTATION ENDPOINT
+app.get('/reputation/solana/signed/:address', gate('0.01'), async (req, res) => {
+  try {
+    const { address } = req.params;
+    const score = await getSolanaScore(address);
+    const crypto = require('crypto');
+    const privateKey = fs.readFileSync(process.env.NULUCRE_PRIVATE_KEY_PATH || '/root/agents/nulucre-private.pem', 'utf8');
+    const payload = { wallet: score.wallet, network: score.network, score: score.score, status: score.status, timestamp: score.timestamp };
+    const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64');
+    const sign = crypto.createSign('SHA256');
+    sign.update(payloadB64);
+    const signature = sign.sign({ key: privateKey, dsaEncoding: 'ieee-p1363' }, 'base64');
+    logSnapshot('solana-signed', address, score);
+    res.json({ ...score, proof: { signature, algorithm: 'ECDSA-P256', signedBy: 'nulucre.com', verifyAt: 'https://nulucre.com/.well-known/jwks.json', payload: payloadB64 } });
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+});
+
+
 app.listen(PORT, () => console.log(`Reputation Oracle running on :${PORT}`));
 
 async function fetchDebankData(wallet) {
@@ -267,6 +526,18 @@ async function getFullScoreV2(wallet) {
   const multiScore = Math.min(Math.log10(alchemy.alchemyTxCount + 1) * 2, 4);
   const rawScore = ageScore + txScore + defiScore + baseScore + chainScore + multiScore;
   const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
+
+  // Sanctions check — must run before INSUFFICIENT_DATA so sanctioned wallets are never mislabeled
+  const sanctionsResult = await checkStellarSanctions(wallet);
+  if (sanctionsResult.sanctioned) {
+    return { wallet, score: 0, status: 'BLACKLISTED', message: 'Address matches sanctions list', sanctionsCheck: { matches: sanctionsResult.matches, source: sanctionsResult.source }, timestamp: new Date().toISOString() };
+  }
+
+  // Thin-wallet check — after sanctions so a sanctioned thin wallet still gets BLACKLISTED
+  if (eth.txCount < 5) {
+    return { wallet, score: null, status: 'INSUFFICIENT_DATA', message: 'Too few transactions to score reliably', reason: 'transaction_count_below_threshold', threshold: 5, actual: eth.txCount, timestamp: new Date().toISOString() };
+  }
+
   const status = finalScore>=80?'TRUSTED':finalScore>=60?'VERIFIED':finalScore>=40?'CAUTION':finalScore>=20?'RISKY':'BLACKLISTED';
   return {
     wallet, score: finalScore, status,
@@ -298,7 +569,6 @@ async function fetchEtherscanData(wallet) {
 }
 
 const crypto = require('crypto');
-const fs = require('fs');
 
 function signScore(scoreData) {
   try {
@@ -529,10 +799,21 @@ async function getStellarScore(gAddress) {
   const spamPenalty = Math.min(Math.round((horizon.spamRatio || 0) * 10), 5);
   const rawScore = ageScore + txScore + assetScore + dexScore + trustScore + claimableScore + sorobanScore + lpScore - spamPenalty;
   const finalScore = Math.max(0, Math.min(100, Math.round(rawScore)));
-  const status = finalScore>=80?'TRUSTED':finalScore>=60?'VERIFIED':finalScore>=40?'CAUTION':finalScore>=20?'RISKY':'BLACKLISTED';
+
+  // Sanctions check — must run before INSUFFICIENT_DATA
   const sanctionsResult = await checkStellarSanctions(gAddress);
-  const finalStatus = sanctionsResult.sanctioned ? 'BLACKLISTED' : status;
-  const finalScoreAdj = sanctionsResult.sanctioned ? 0 : finalScore;
+  if (sanctionsResult.sanctioned) {
+    return { wallet: gAddress, network: 'stellar:pubnet', score: 0, status: 'BLACKLISTED', message: 'Address matches sanctions list', sanctionsCheck: { matches: sanctionsResult.matches, source: sanctionsResult.source }, timestamp: new Date().toISOString() };
+  }
+
+  // Thin-wallet check — after sanctions
+  if (horizon.txCount < 3) {
+    return { wallet: gAddress, network: 'stellar:pubnet', score: null, status: 'INSUFFICIENT_DATA', message: 'Too few transactions to score reliably', reason: 'transaction_count_below_threshold', threshold: 3, actual: horizon.txCount, timestamp: new Date().toISOString() };
+  }
+
+  const status = finalScore>=80?'TRUSTED':finalScore>=60?'VERIFIED':finalScore>=40?'CAUTION':finalScore>=20?'RISKY':'BLACKLISTED';
+  const finalStatus = status;
+  const finalScoreAdj = finalScore;
   return {
     wallet: gAddress,
     network: 'stellar:pubnet',
@@ -557,10 +838,11 @@ async function getStellarScore(gAddress) {
 }
 
 // STELLAR REPUTATION ENDPOINT
-app.get('/reputation/stellar/:gAddress', gate('0.003'), async (req, res) => {
+app.get('/reputation/stellar/:gAddress', gate('0.001'), async (req, res) => {
   try {
     const { gAddress } = req.params;
     const score = await getStellarScore(gAddress);
+    logSnapshot('stellar', gAddress, score);
     res.json(score);
   } catch (err) {
     res.status(400).json({ error: err.message });
@@ -593,7 +875,7 @@ app.get('/reputation/stellar/signed/:gAddress', gate('0.01'), async (req, res) =
   try {
     const { gAddress } = req.params;
     const score = await getStellarScore(gAddress);
-    const fs = require('fs');
+    logSnapshot('stellar-signed', gAddress, score);
     const crypto = require('crypto');
     const privateKey = fs.readFileSync(process.env.NULUCRE_PRIVATE_KEY_PATH || '/root/agents/nulucre-private.pem', 'utf8');
     const payload = {
