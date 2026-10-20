@@ -1,211 +1,172 @@
-# Nulucre Agents — The On-Chain Credit Score for AI Agents
+# Nulucre Agents — Wallet Reputation Oracle for AI Agents
 
-Two autonomous AI agents accepting USDC micropayments via x402 on Base mainnet and Stellar pubnet. No API keys, no accounts, no subscriptions — pure agent-to-agent commerce.
+Real-time wallet trust scores across 4 chains, paid via x402 micropayments. No API keys, no accounts, no subscriptions — pure agent-to-agent commerce.
 
-## Agents
+**Base URL:** `https://agents.nulucre.com`  
+**Methodology:** `https://agents.nulucre.com/methodology`  
+**MCP Server:** `https://agents.nulucre.com/mcp`
 
-### 🔵 Reputation Oracle
-The credit score for crypto wallets. Returns a 0-100 trust score across 81+ chains with ECDSA cryptographic proof.
+---
 
-## Scoring Breakdown
+## Endpoints
 
-| Component | Max Score | Source |
-|-----------|-----------|--------|
-| Wallet Age | 30 | Etherscan V2 |
-| TX Volume | 40 | Etherscan V2 |
-| DeFi Activity | 20 | Moralis / DeBank |
-| Base Activity | 10 | Basescan via Etherscan V2 |
-| Multi-Chain EVM | 10 | Alchemy (Polygon, Arbitrum, Optimism) |
-| Ankr Coverage | 10 | Ankr (81+ chains) |
-| **Total** | **100+** | Multi-source |
+| Endpoint | Price | Description |
+|----------|-------|-------------|
+| `GET /reputation/{wallet}` | $0.001 USDC | EVM wallet score (81+ chains) |
+| `GET /reputation/signed/{wallet}` | $0.01 USDC | EVM score with ECDSA proof |
+| `GET /reputation/stellar/{G-address}` | $0.001 USDC | Stellar wallet score |
+| `GET /reputation/stellar/signed/{G-address}` | $0.01 USDC | Stellar score with ECDSA proof |
+| `GET /reputation/xrpl/{r-address}` | $0.001 USDC | XRPL wallet score |
+| `GET /reputation/solana/{address}` | $0.001 USDC | Solana wallet score |
+| `POST /verify` | $0.01 USDC | DeFi TVL fact verification |
+| `GET /tvl/{protocol}` | FREE | Raw TVL lookup |
+| `GET /health` | FREE | Health check |
+| `GET /methodology` | FREE | Scoring methodology |
 
-## Pricing & Networks
-| Tier | Endpoint | Price | Networks |
-|------|----------|-------|---------|
-| Standard | GET /reputation/{wallet} | $0.003 USDC | Base Mainnet + Stellar Pubnet |
-| Signed | GET /reputation/signed/{wallet} | $0.01 USDC | Base Mainnet + Stellar Pubnet |
-| Stellar Score | GET /reputation/stellar/{gAddress} | $0.003 USDC | Stellar Pubnet |
-| Stellar Signed | GET /reputation/stellar/signed/{gAddress} | $0.01 USDC | Stellar Pubnet |
-| Verification | POST /verify | $0.01 USDC | Base Mainnet + Stellar Pubnet |
-| TVL Lookup | GET /tvl/{protocol} | FREE | - |
-| Health | GET /health | FREE | - |
+---
 
-## Cryptographic Verification
-Signed scores are independently verifiable by any agent:
-- **JWKS endpoint:** https://nulucre.com/.well-known/jwks.json
-- **Algorithm:** ECDSA-P256
-- **Signed by:** nulucre.com
+## Payment Networks
 
-**Status Labels:**
-| Score | Status |
-|-------|--------|
-| 80–100 | TRUSTED |
-| 60–79 | VERIFIED |
-| 40–59 | CAUTION |
-| 20–39 | RISKY |
-| 0–19 | BLACKLISTED |
+| Network | Token | Pay To |
+|---------|-------|--------|
+| Base Mainnet | USDC (ERC-20) | `0xd97C122cB81894213C67Bcc774448955d09915bC` |
+| Stellar Pubnet | USDC (SEP-41) | `GCRUBFDANV52JP3URUJ7EZGPZKFEESBTW7T3FV2SJXZZGB6HDNRBWV24` |
+| Solana Mainnet | USDC (SPL) | `GCRUBFDANv52JP3URUJ7EZGPZKFEESBTW7T3FV2SJXZZGB6HDNRBWV24` |
 
-**Standard Response:**
+---
+
+## Score Bands
+
+| Score | Status | Meaning |
+|-------|--------|---------|
+| 80–100 | `TRUSTED` | Long history, high activity, broad multi-chain footprint |
+| 60–79 | `VERIFIED` | Established wallet with meaningful on-chain history |
+| 40–59 | `CAUTION` | Limited history or signals |
+| 20–39 | `RISKY` | Very new, inactive, or abnormal patterns |
+| 0–19 | `BLACKLISTED` | Sanctioned or near-zero activity |
+| — | `INSUFFICIENT_DATA` | Fewer than 5 txs (EVM/Solana) or 3 txs (Stellar/XRPL) — not a risk verdict |
+
+Full methodology: https://agents.nulucre.com/methodology
+
+---
+
+## Standard Response
+
 ```json
 {
   "wallet": "0x123...abc",
-  "score": 97,
-  "status": "TRUSTED",
+  "score": 74,
+  "status": "VERIFIED",
+  "network": "evm",
   "breakdown": {
-    "walletAge": { "score": 30, "raw": "3827 days" },
-    "txVolume": { "score": 40, "raw": "10000 txs" },
-    "defiActivity": { "score": 8, "raw": "4 protocols" },
-    "multiChain": { "score": 9, "raw": "3 EVM chains" },
-    "ankrCoverage": { "score": 10, "raw": "16 chains with assets" }
+    "walletAge": { "score": 28, "raw": "3400 days" },
+    "txVolume": { "score": 35, "raw": "2100 txs" },
+    "defiActivity": { "score": 6, "raw": "3 protocols" },
+    "multiChain": { "score": 5, "raw": "2 EVM chains" }
   },
-  "chains": ["ethereum", "base", "polygon", "arbitrum", "optimism", "ankr-81-chains"],
-  "timestamp": "2026-03-24T00:00:00.000Z"
+  "timestamp": "2026-10-20T00:00:00.000Z"
 }
 ```
 
-**Signed Response:**
+Thin-file response:
+
 ```json
 {
   "wallet": "0x123...abc",
-  "score": 97,
-  "status": "TRUSTED",
-  "proof": {
-    "signature": "MEQCIFruX2vD...",
-    "algorithm": "ECDSA-P256",
-    "signedBy": "nulucre.com",
-    "verifyAt": "https://nulucre.com/.well-known/jwks.json"
-  }
+  "score": null,
+  "status": "INSUFFICIENT_DATA",
+  "message": "Too few transactions to score reliably",
+  "timestamp": "2026-10-20T00:00:00.000Z"
 }
 ```
-
----
-
-### 🟡 Fact Verification Agent — $0.01 USDC per report
-Verifies DeFi protocol TVL claims against DeFi Llama on-chain data. Returns ACCURATE, MISLEADING, or FALSE.
-
-**Endpoint:**
-POST https://nulucre.com/verify
-
-**Request Body:**
-```json
-{
-  "claim": "Aave has $12B TVL",
-  "protocol": "aave"
-}
-```
-
-**Example Response:**
-```json
-{
-  "verdict": "ACCURATE",
-  "claimedTVL": 12000000000,
-  "actualTVL": 11840000000,
-  "discrepancyPercent": -1.3,
-  "dataSource": "DeFi Llama",
-  "timestamp": "2026-03-24T00:00:00.000Z"
-}
-```
-
-**Verdicts:**
-- ACCURATE (< 5% difference)
-- MOSTLY_ACCURATE (5–10%)
-- INACCURATE (10–25%)
-- MISLEADING (25–50%)
-- FALSE (> 50%)
-
----
-
-### 🆓 Free Endpoints
-
-**Health check:**
-GET https://nulucre.com/health
-
-**Raw TVL lookup:**
-GET https://nulucre.com/tvl/{protocol}
 
 ---
 
 ## How x402 Payment Works
 
-1. Agent calls your endpoint
-2. Server returns `402 Payment Required` with payment details for Base or Stellar
-3. Agent sends USDC on Base mainnet or Stellar pubnet
+1. Agent calls endpoint
+2. Server returns `402 Payment Required` with payment details (Base, Stellar, or Solana)
+3. Agent sends USDC on chosen network
 4. Agent includes payment proof in next request header
-5. Server verifies and returns data
+5. Server verifies and returns score
 
-No accounts. No API keys. Fully autonomous agent-to-agent payments.
+No accounts. No API keys. Fully autonomous.
 
-## Payment Details
+---
 
-| Network | Token | Address |
-|---------|-------|---------|
-| Base Mainnet | USDC (ERC-20) | `0xd97C122cB81894213C67Bcc774448955d09915bC` |
-| Stellar Pubnet | USDC (SEP-41) | `GCRUBFDANV52JP3URUJ7EZGPZKFEESBTW7T3FV2SJXZZGB6HDNRBWV24` |
+## Cryptographic Verification
 
-## Stack
+Signed endpoints return an ECDSA-P256 signature verifiable against the Nulucre public key.
 
-- Node.js + Express
-- x402 payment protocol
-- Etherscan V2 (wallet age + tx volume)
-- Moralis / DeBank (DeFi activity)
-- Alchemy (Polygon, Arbitrum, Optimism)
-- Ankr (81+ chains)
-- DeFi Llama (TVL verification)
-- ECDSA-P256 cryptographic signing
-- OpenZeppelin Stellar facilitator
-- PM2 + Nginx on Ubuntu VPS
+- **JWKS:** `https://nulucre.com/.well-known/jwks.json`
+- **Algorithm:** ECDSA-P256 / SHA-256 / IEEE P1363
+
+---
 
 ## Agent Discovery
-```
-https://nulucre.com/.well-known/SKILL.md
-https://nulucre.com/.well-known/x402.json
+
+https://agents.nulucre.com/reputation/
 https://nulucre.com/.well-known/agent.json
+https://nulucre.com/.well-known/x402.json
 https://nulucre.com/.well-known/jwks.json
 https://nulucre.com/openapi.json
-```
-## 🆓 Try It Free — No Payment Needed
 
-Test the API instantly with no x402 setup required:
 
-```bash
-curl https://nulucre.com/reputation/0x000000000000000000000000000000000000TEST
-```
+---
 
-Returns a sample wallet score response immediately. For real wallet scoring, use any EVM address — $0.001 USDC via x402.
 ## Quick Start
+
 ```bash
 # Free health check
-curl https://nulucre.com/health
+curl https://agents.nulucre.com/health
 
 # Free TVL lookup
-curl https://nulucre.com/tvl/aave
+curl https://agents.nulucre.com/tvl/aave
 
-# EVM wallet reputation query (requires x402 payment)
-curl https://nulucre.com/reputation/0xYourWalletAddress
+# EVM wallet score (requires x402 payment)
+curl https://agents.nulucre.com/reputation/0xYourWalletAddress
 
-# EVM signed reputation query with ECDSA proof
-curl https://nulucre.com/reputation/signed/0xYourWalletAddress
+# EVM signed score with ECDSA proof
+curl https://agents.nulucre.com/reputation/signed/0xYourWalletAddress
 
-# Stellar native wallet reputation query (requires x402 payment)
-curl https://nulucre.com/reputation/stellar/GYourStellarAddress
+# Stellar wallet score
+curl https://agents.nulucre.com/reputation/stellar/GYourStellarAddress
 
-# Stellar signed reputation query with ECDSA proof
-curl https://nulucre.com/reputation/stellar/signed/GYourStellarAddress
+# XRPL wallet score
+curl https://agents.nulucre.com/reputation/xrpl/rYourXRPLAddress
 
-# Fact verification (requires x402 payment)
-curl -X POST https://nulucre.com/verify \
+# Solana wallet score
+curl https://agents.nulucre.com/reputation/solana/YourSolanaAddress
+
+# Fact verification
+curl -X POST https://agents.nulucre.com/verify \
   -H "Content-Type: application/json" \
   -d '{"claim": "Uniswap has $5B TVL", "protocol": "uniswap"}'
 ```
 
-Copy and paste this replacing your existing Quick Start section → commit! 👊
+---
+
+## Stack
+
+- Node.js + Express + PM2
+- x402 payment protocol (Base, Stellar, Solana)
+- Etherscan V2, Alchemy, Ankr, DeBank/Moralis (EVM)
+- Stellar Horizon + StellarExpert (Stellar)
+- xrplcluster.com (XRPL)
+- Solana Mainnet RPC (Solana)
+- ECDSA-P256 cryptographic signing
+- Nginx reverse proxy on Ubuntu VPS
+
+---
+
 ## Links
 
 - 🌐 Website: https://nulucre.com
-- 📦 x402.json: https://nulucre.com/.well-known/x402.json
+- 📖 Methodology: https://agents.nulucre.com/methodology
+- 🔌 MCP Server: https://agents.nulucre.com/mcp
 - 🔑 JWKS: https://nulucre.com/.well-known/jwks.json
 - 📧 Contact: info@nulucre.com
 
-## License
+---
 
-MIT
+MIT License — © 2026 Nulucre Inc.
