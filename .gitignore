@@ -5,3 +5,8 @@
 node_modules/
 *.tar.gz
 ecosystem.config.js
+.env
+.env.save
+*.pem
+ecosystem.config.cjs
+node_modules/
